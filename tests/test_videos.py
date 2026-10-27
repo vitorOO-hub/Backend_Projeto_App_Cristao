@@ -120,7 +120,7 @@ def test_public_json_hides_internals():
     approved['review'] = {'reason': 'Nota interna da moderação', 'decided_by': ObjectId(), 'decided_at': AT}
     data = video_public(approved, owner, reaction_count=3, comment_count=2, reacted_by_me=True)
     assert data['id'] == str(approved['_id'])
-    assert data['author'] == {'id': str(owner['_id']), 'name': 'Maria', 'bio': '', 'created_at': '2026-10-27T10:00:00.123456Z'}
+    assert data['author'] == {'id': str(owner['_id']), 'name': 'Maria', 'username': None, 'bio': '', 'created_at': '2026-10-27T10:00:00.123456Z'}
     assert data['media_url'] == f"/api/videos/{approved['_id']}/media"
     assert (data['reaction_count'], data['comment_count'], data['reacted_by_me']) == (3, 2, True)
     assert data['duration_seconds'] == 42.5

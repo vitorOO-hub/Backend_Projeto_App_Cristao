@@ -60,7 +60,7 @@ def test_comment_lifecycle(world):
     data = created.json['data']
     assert data['text'] == 'Amém!' and data['video_id'] == str(video['_id'])
     assert data['author'] == {key: fan.user[key] if key != 'id' else str(fan.id) for key in ('id', 'name', 'bio')} | {
-        'created_at': data['author']['created_at']}
+        'username': None, 'created_at': data['author']['created_at']}
     assert created.headers['Location'] == f"/api/comments/{data['id']}"
     assert 'email' not in created.text and 'password' not in created.text
     world.advance(seconds=5)
@@ -209,7 +209,7 @@ def test_block_lifecycle(world):
     listing = me.get('/api/me/blocks')
     assert [item['user']['name'] for item in listing.json['data']] == ['Ana', 'Joao']
     assert set(listing.json['data'][0]) == {'user', 'created_at'}
-    assert set(listing.json['data'][0]['user']) == {'id', 'name', 'bio', 'created_at'}
+    assert set(listing.json['data'][0]['user']) == {'id', 'name', 'username', 'bio', 'created_at'}
     assert 'email' not in listing.text
     assert me.delete(f'/api/me/blocks/{joao.id}').status_code == 204
     assert me.delete(f'/api/me/blocks/{joao.id}').status_code == 204
