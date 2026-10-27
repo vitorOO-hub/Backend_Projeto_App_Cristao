@@ -5,7 +5,7 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
-from app.errors import AuthUnavailable, EmailConflict
+from app.errors import AuthUnavailable, EmailConflict, UsernameConflict
 
 
 def scalar_selector(value):
@@ -21,6 +21,7 @@ class AuthRepository(Protocol):
     def rotate_csrf(self, token_hash, csrf_hash, now): ...
     def insert_user(self, document): ...
     def find_user_by_email(self, email): ...
+    def find_user_by_username(self, username): ...
     def find_user_by_id(self, user_id): ...
     def update_user(self, user_id, fields): ...
     def delete_session(self, token_hash): ...
@@ -34,7 +35,7 @@ class UnavailableAuthRepository:
         raise AuthUnavailable()
 
     initialize = find_session = insert_session = rotate_csrf = insert_user = _unavailable
-    find_user_by_email = find_user_by_id = update_user = delete_session = _unavailable
+    find_user_by_email = find_user_by_username = find_user_by_id = update_user = delete_session = _unavailable
     failed_logins = record_failed_login = clear_failed_logins = _unavailable
 
 
@@ -47,6 +48,9 @@ class MongoAuthRepository:
     def initialize(self):
         try:
             self.users.create_index('email_normalized', unique=True, name='users_email_unique')
+            # Parcial: contas criadas antes do nome de usuário não têm o campo e não colidem entre si.
+            self.users.create_index('username_normalized', unique=True, name='users_username_unique',
+                                    partialFilterExpression={'username_normalized': {'$type': 'string'}})
             self.sessions.create_index('token_hash', unique=True, name='sessions_token_unique')
             self.sessions.create_index('expires_at', expireAfterSeconds=0, name='sessions_expiry')
             self.attempts.create_index([('key_hash', 1), ('created_at', 1)], name='login_attempts_key')
@@ -80,7 +84,9 @@ class MongoAuthRepository:
     def insert_user(self, document):
         try:
             self.users.insert_one(document)
-        except DuplicateKeyError:
+        except DuplicateKeyError as error:
+            if 'username_normalized' in ((error.details or {}).get('keyPattern') or {}):
+                raise UsernameConflict() from None
             raise EmailConflict() from None
         except PyMongoError:
             raise AuthUnavailable() from None
@@ -90,6 +96,13 @@ class MongoAuthRepository:
         scalar_selector(email)
         try:
             return self.users.find_one({'email_normalized': email})
+        except PyMongoError:
+            raise AuthUnavailable() from None
+
+    def find_user_by_username(self, username):
+        scalar_selector(username)
+        try:
+            return self.users.find_one({'username_normalized': username})
         except PyMongoError:
             raise AuthUnavailable() from None
 

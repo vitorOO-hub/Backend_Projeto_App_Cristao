@@ -26,7 +26,7 @@ def test_registration_and_secrets(setup):
     response = client.post('/api/users', json=payload(), headers=headers)
     assert response.status_code == 201
     data = response.json['data']
-    assert data == {'id': data['id'], 'name': 'Maria Silva', 'email': 'maria@example.com',
+    assert data == {'id': data['id'], 'name': 'Maria Silva', 'username': None, 'email': 'maria@example.com',
                     'role': 'user', 'bio': '', 'created_at': '2026-10-22T00:00:00Z'}
     assert len(data['id']) == 24
     assert response.headers['Location'] == '/api/users/' + data['id']

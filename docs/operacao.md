@@ -100,7 +100,7 @@ Fluxo: GET `/api/auth/csrf` → guardar cookie e `data.csrf_token` → POST `/ap
 
 Testes usam repositório fake injetado e adaptador Mongo simulado, sem rede ou dados reais. Não comprovam persistência no Atlas, concorrência real no banco ou integração React. Sessão autenticada dura 12 horas (`SESSION_TTL_SECONDS=43200`, valor fixo validado na inicialização).
 
-Os limites de acesso são compartilhados: MongoDB em produção e SQLite persistente somente no desenvolvimento/teste sem URI. Há orçamentos por IP, global, cadastro, CSRF e login IP/e-mail, reservados atomicamente antes do trabalho caro. Sucesso não zera o contador. Ver tabela e semântica de janela fixa no [guia de segurança](seguranca.md). Limites 429 da aplicação têm Retry-After; falha do armazenamento gera 503. Health não comprova que os contadores ou índices estejam prontos.
+Os limites de acesso são compartilhados: MongoDB em produção e SQLite persistente somente no desenvolvimento/teste sem URI. Há orçamentos por IP, global, cadastro, CSRF e login IP/conta, reservados atomicamente antes do trabalho caro. Sucesso não zera o contador. Ver tabela e semântica de janela fixa no [guia de segurança](seguranca.md). Limites 429 da aplicação têm Retry-After; falha do armazenamento gera 503. Health não comprova que os contadores ou índices estejam prontos.
 
 ## Transição planejada para sessões persistentes — D004
 

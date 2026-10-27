@@ -21,7 +21,7 @@ As janelas são fixas, alinhadas ao relógio UTC. Um limite de L pode admitir um
 | CSRF por IP | 30 requisições/minuto |
 | Cadastro por IP | 5 requisições/15 minutos |
 | Login por IP | 60 requisições/15 minutos |
-| Login por IP/e-mail normalizado | 10 tentativas/15 minutos, incluindo sucesso |
+| Login por IP/conta (IP/identificador normalizado se a conta não existe) | 10 tentativas/15 minutos, incluindo sucesso |
 | Consulta bíblica por IP | 60 requisições/minuto |
 
 O limite por origem é verificado antes de consumir o orçamento global; um IP já bloqueado não gasta novamente o orçamento global. Os contadores não são apagados no login bem-sucedido. CSRF é proteção contra ações induzidas por outros sites, não contra automação que obtém sua própria sessão.

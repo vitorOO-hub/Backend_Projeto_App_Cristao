@@ -79,6 +79,63 @@ def test_login_failure_is_generic(setup):
     assert 'user_id' not in next(iter(repo.sessions.values()))
 
 
+def register_handle(client, username=' Maria.Silva ', email=EMAIL):
+    body = {'name': 'Maria Silva', 'username': username, 'email': email, 'password': PASSWORD}
+    return client.post('/api/users', json=body, headers=csrf(client))
+
+
+def test_login_by_email_or_username(setup):
+    _, client, repo, _ = setup
+    response = register_handle(client)
+    assert response.status_code == 201
+    assert response.json['data']['username'] == 'maria.silva'
+    for identifier in ('maria.silva', ' MARIA.Silva ', EMAIL, ' Maria@Example.com '):
+        response = client.post('/api/auth/login', json={'login': identifier, 'password': PASSWORD},
+                               headers=csrf(client))
+        assert response.status_code == 200, identifier
+        assert response.json['data']['user']['username'] == 'maria.silva'
+    wrong = client.post('/api/auth/login', json={'login': 'maria.silva', 'password': 'wrong-password-123'},
+                        headers=csrf(client))
+    unknown = client.post('/api/auth/login', json={'login': 'ninguem', 'password': PASSWORD},
+                          headers=csrf(client))
+    invalid = client.post('/api/auth/login', json={'login': '..', 'password': PASSWORD}, headers=csrf(client))
+    assert wrong.status_code == unknown.status_code == invalid.status_code == 401
+    assert wrong.json == unknown.json == invalid.json
+    assert client.post('/api/auth/login', json={'login': EMAIL, 'email': EMAIL, 'password': PASSWORD},
+                       headers=csrf(client)).status_code == 400
+
+
+def test_username_is_unique_and_optional(setup):
+    _, client, repo, _ = setup
+    assert register_handle(client).status_code == 201
+    conflict = register_handle(client, username='maria.SILVA', email='outra@example.com')
+    assert conflict.status_code == 409
+    assert conflict.json['error']['code'] == 'username_conflict'
+    # Sem username o corpo antigo continua valendo, e duas contas sem username não colidem.
+    assert register(client, email='a@example.com')['username'] is None
+    assert register(client, email='b@example.com')['username'] is None
+
+
+@pytest.mark.parametrize('username', [
+    'ab', 'a' * 31, '.maria', 'maria.', 'ma..ria', 'maria silva', 'maria@x', 'maria-silva', 'ñandu',
+    {'$ne': None}, 123, None])
+def test_invalid_username(setup, username):
+    _, client, repo, _ = setup
+    assert register_handle(client, username=username).status_code == 400
+    assert not repo.users
+
+
+def test_login_limit_is_shared_by_email_and_username(setup):
+    _, client, _, _ = setup
+    register_handle(client)
+    for n in range(10):
+        identifier = EMAIL if n % 2 else 'maria.silva'
+        assert client.post('/api/auth/login', json={'login': identifier, 'password': 'wrong-password-123'},
+                           headers=csrf(client)).status_code == 401
+    assert client.post('/api/auth/login', json={'login': 'maria.silva', 'password': PASSWORD},
+                       headers=csrf(client)).status_code == 429
+
+
 def test_login_requires_csrf_and_valid_origin(setup):
     _, client, _, _ = setup
     register(client)
@@ -251,7 +308,7 @@ def test_public_profile(logged, setup):
     anonymous = setup[0].test_client()
     response = anonymous.get('/api/users/' + user['id'])
     assert response.status_code == 200
-    assert response.json['data'] == {key: user[key] for key in ('id', 'name', 'bio', 'created_at')}
+    assert response.json['data'] == {key: user[key] for key in ('id', 'name', 'username', 'bio', 'created_at')}
     assert 'email' not in response.text and 'role' not in response.text
     assert response.headers['Cache-Control'] == 'no-store'
 

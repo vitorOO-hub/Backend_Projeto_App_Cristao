@@ -19,3 +19,7 @@ class AuthUnavailable(Exception):
 
 class EmailConflict(Exception):
     pass
+
+
+class UsernameConflict(Exception):
+    pass

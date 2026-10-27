@@ -6,7 +6,7 @@ from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError, OperationFailure, ServerSelectionTimeoutError
 
 from app.auth_repository import MongoAuthRepository
-from app.errors import AuthUnavailable, EmailConflict
+from app.errors import AuthUnavailable, EmailConflict, UsernameConflict
 
 
 @pytest.fixture
@@ -17,7 +17,11 @@ def repository():
 
 def test_indexes(repository):
     repository.initialize()
-    repository.users.create_index.assert_called_once_with('email_normalized', unique=True, name='users_email_unique')
+    assert repository.users.create_index.call_count == 2
+    repository.users.create_index.assert_any_call('email_normalized', unique=True, name='users_email_unique')
+    repository.users.create_index.assert_any_call(
+        'username_normalized', unique=True, name='users_username_unique',
+        partialFilterExpression={'username_normalized': {'$type': 'string'}})
     assert repository.sessions.create_index.call_count == 2
     repository.attempts.create_index.assert_any_call(
         [('key_hash', 1), ('created_at', 1)], name='login_attempts_key')
@@ -49,7 +53,18 @@ def test_atomic_insert_and_duplicate(repository):
     repository.users.insert_one.side_effect = DuplicateKeyError('duplicate')
     with pytest.raises(EmailConflict):
         repository.insert_user(user)
+    repository.users.insert_one.side_effect = DuplicateKeyError(
+        'duplicate', 11000, {'keyPattern': {'username_normalized': 1}})
+    with pytest.raises(UsernameConflict):
+        repository.insert_user(user)
     repository.users.find_one.assert_not_called()
+
+
+def test_username_query(repository):
+    repository.find_user_by_username('maria.silva')
+    repository.users.find_one.assert_called_once_with({'username_normalized': 'maria.silva'})
+    with pytest.raises(ValueError):
+        repository.find_user_by_username({'$ne': None})
 
 
 @pytest.mark.parametrize('method, collection, operation, args', [
