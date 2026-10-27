@@ -44,7 +44,7 @@ Para o modelo Nginx local, definir `TRUSTED_PROXY_IPS=127.0.0.1,::1`; produção
 
 O Nginx deve sobrescrever X-Forwarded-For com o endereço que realmente recebeu e Gunicorn deve permanecer em loopback, sem porta pública alternativa. Não habilitar configuração de real-IP baseada em cabeçalhos de qualquer cliente. Se a topologia incluir outro proxy/load balancer, reavaliar a configuração antes de publicar.
 
-Cookies continuam HttpOnly, SameSite=Lax e Secure em produção. A API retorna no-store, nosniff e proteção de enquadramento; produção acrescenta HSTS. O modelo Nginx também inclui CSP para o build React de mesma origem. Validar carregamento do build e recursos com essa política antes do aceite.
+Cookies continuam HttpOnly, SameSite=Lax e Secure em produção. O valor de `app_session` é um JWT HS256; `JWT_SECRET` tem pelo menos 32 bytes, é obrigatório em produção e fica fora do Git. Trocar a chave encerra todas as sessões. A API retorna no-store, nosniff e proteção de enquadramento; produção acrescenta HSTS. O modelo Nginx também inclui CSP para o build React de mesma origem. Validar carregamento do build e recursos com essa política antes do aceite.
 
 ## Credenciais runtime e inicialização de índices
 
@@ -82,7 +82,7 @@ Bootstrap: pip 26.2.2. Runtime: certifi 2026.10.19. A atualização local foi ex
 - Executar `init-auth` e `init-cache` com credencial operacional; conferir os índices e a rejeição das ações não autorizadas da credencial runtime em destino isolado, sem comandos destrutivos sobre dados reais.
 - Conferir lista de acesso de rede, TLS, domínio, proxy, CSP e limites com `nginx -t` e testes de fluxo no servidor autorizado.
 - Demonstrar backup e restauração em destino isolado; separar acesso de administração/backup do runtime, com retenção e perda máxima aceitáveis registradas. Recursos de backup pago exigem escolha explícita do grupo.
-- Registrar eventos sanitizados de 429/503 e acompanhar taxa de criação de usuários/sessões. Não registrar senha, cookie, token CSRF, URI ou corpo completo de autenticação.
+- Registrar eventos sanitizados de 429/503 e acompanhar taxa de criação de usuários/sessões. Não registrar senha, cookie, JWT, `JWT_SECRET`, token CSRF, URI ou corpo completo de autenticação.
 - Auditar novamente novas rotas de upload, exclusão e moderação quando implementadas. Manter a revisão de sessões persistentes como tarefa separada; seu prazo maior não está implementado por estas correções.
 
 A conclusão desses itens depende de evidências reais. Este guia e os testes locais não certificam a configuração do Atlas ou a recuperação de um banco publicado.

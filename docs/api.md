@@ -12,7 +12,7 @@ Erro: `{"error": {"code": "validation_error", "message": "Dados inválidos.", "f
 
 Demais códigos: 401 sem sessão autenticada válida; 403 CSRF inválido ou ação conhecida sem permissão; 409 conflito/duplicação; 413 limite de upload; 415 tipo de conteúdo não aceito; 422 mídia ilegível ou fora dos limites; 429 limite de tentativas; 502 resposta inválida de provedor; 503 dependência indisponível. JSON inválido: 400. Erro inesperado: 500 com mensagem genérica.
 
-Todos os métodos mutáveis exigem cookie e `X-CSRF-Token`; isso inclui rotas públicas de cadastro e login. Sessão sem autenticação não autoriza interações. Respostas de sessão/CSRF/usuário próprio: `Cache-Control: no-store`.
+Todos os métodos mutáveis exigem cookie e `X-CSRF-Token`; isso inclui rotas públicas de cadastro e login. Sessão sem autenticação não autoriza interações. Respostas de sessão/CSRF/usuário próprio: `Cache-Control: no-store`. O cookie `app_session` é um JWT HS256 HttpOnly; o React não o lê nem o envia em cabeçalho `Authorization`.
 
 **Proteção de recursos implementada:** corpo das rotas atuais limitado a 16 KiB, com 413 em excesso. API, exceto health: 120 requisições/IP/minuto e 1.000 globais/minuto; CSRF: 30/IP/minuto; cadastro: 5/IP/15 minutos; login: 60/IP/15 minutos e 10/IP/e-mail/15 minutos; consulta bíblica: 60/IP/minuto. Janelas fixas UTC, reserva atômica em armazenamento compartilhado e Retry-After no 429 do Flask. Sucesso também consome orçamento. Proxy pode devolver 413/429 fora do envelope JSON; tratar pelo status. Detalhes e limitações em [segurança](seguranca.md).
 
