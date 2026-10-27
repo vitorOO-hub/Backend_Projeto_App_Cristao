@@ -38,6 +38,7 @@ def create_app(config=None):
         SESSION_COOKIE_SECURE=os.getenv("SESSION_COOKIE_SECURE", "true").lower() == "true",
         ANONYMOUS_SESSION_TTL_SECONDS=int(os.getenv("ANONYMOUS_SESSION_TTL_SECONDS", "1800")),
         SESSION_TTL_SECONDS=int(os.getenv("SESSION_TTL_SECONDS", "43200")),
+        JWT_SECRET=os.getenv("JWT_SECRET", ""),
         MONGODB_URI=os.getenv("MONGODB_URI", ""),
         MONGODB_DATABASE=os.getenv("MONGODB_DATABASE", "app_cristao_dev"),
         TRUSTED_PROXY_IPS=os.getenv("TRUSTED_PROXY_IPS", ""),

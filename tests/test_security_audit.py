@@ -10,7 +10,7 @@ from bson import ObjectId
 import pytest
 from werkzeug.security import generate_password_hash
 
-from app.auth import digest
+from app.auth import digest, issue_token
 from app.cache import SQLiteCache
 
 
@@ -26,9 +26,11 @@ def audit_context(setup, audit_password_hash):
         repo.insert_user({'_id': ObjectId(), 'email_normalized': email,
                           'name': 'Synthetic user', 'bio': '', 'role': 'user',
                           'password_hash': audit_password_hash, 'created_at': clock[0]})
-    cookie, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-    repo.insert_session({'token_hash': digest(cookie), 'csrf_hash': digest(csrf),
-                         'user_id': repo.users['owner@example.com']['_id'],
+    owner = repo.users['owner@example.com']['_id']
+    with app.app_context():
+        cookie = issue_token(clock[0], 43200, owner)
+    csrf = secrets.token_urlsafe(32)
+    repo.insert_session({'token_hash': digest(cookie), 'csrf_hash': digest(csrf), 'user_id': owner,
                          'created_at': clock[0], 'expires_at': clock[0] + timedelta(hours=12)})
     client.set_cookie('app_session', cookie)
     return app, client, repo, {'X-CSRF-Token': csrf}

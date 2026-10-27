@@ -10,6 +10,8 @@ from app.errors import AuthUnavailable
 from app.security import (MongoRateLimits, SQLiteRateLimits, configure_security,
                           consume_budget)
 
+JWT_SECRET = 's' * 32
+
 
 def csrf(client):
     response = client.get('/api/auth/csrf')
@@ -150,13 +152,13 @@ def test_mongo_duplicate_bucket_uses_capped_atomic_retry():
 def test_production_rejects_insecure_transport_before_connecting(uri):
     with patch('app.MongoClient') as mongo, pytest.raises(ValueError, match='TLS'):
         create_app({'APP_ENV': 'production', 'APP_ORIGIN': 'https://example.com',
-                    'SESSION_COOKIE_SECURE': True, 'MONGODB_URI': uri})
+                    'SESSION_COOKIE_SECURE': True, 'MONGODB_URI': uri, 'JWT_SECRET': JWT_SECRET})
     mongo.assert_not_called()
 
 
 def test_production_requires_https_origin_before_connecting():
     with patch('app.MongoClient') as mongo, pytest.raises(ValueError, match='HTTPS'):
-        create_app({'APP_ENV': 'production', 'APP_ORIGIN': 'http://example.com',
+        create_app({'APP_ENV': 'production', 'APP_ORIGIN': 'http://example.com', 'JWT_SECRET': JWT_SECRET,
                     'SESSION_COOKIE_SECURE': True, 'MONGODB_URI': 'mongodb+srv://example.com'})
     mongo.assert_not_called()
 
@@ -165,7 +167,7 @@ def test_production_headers_host_and_setup_credential(monkeypatch):
     monkeypatch.delenv('MONGODB_SETUP_URI', raising=False)
     with patch('app.MongoClient') as mongo:
         app = create_app({'APP_ENV': 'production', 'APP_ORIGIN': 'https://example.com',
-                          'TRUSTED_PROXY_IPS': '127.0.0.1',
+                          'TRUSTED_PROXY_IPS': '127.0.0.1', 'JWT_SECRET': JWT_SECRET,
                           'SESSION_COOKIE_SECURE': True, 'MONGODB_URI': 'mongodb+srv://example.com'})
         assert mongo.call_count == 1
         response = app.test_client().get('/api/health', base_url='https://example.com')
@@ -184,7 +186,7 @@ def test_production_index_setup_uses_separate_credential(monkeypatch):
     setup_client.__enter__.return_value = setup_client
     with patch('app.MongoClient', side_effect=[runtime, setup_client]) as mongo:
         app = create_app({'APP_ENV': 'production', 'APP_ORIGIN': 'https://example.com',
-                          'TRUSTED_PROXY_IPS': '127.0.0.1',
+                          'TRUSTED_PROXY_IPS': '127.0.0.1', 'JWT_SECRET': JWT_SECRET,
                           'SESSION_COOKIE_SECURE': True, 'MONGODB_URI': 'mongodb+srv://runtime.example.com'})
         result = app.test_cli_runner().invoke(args=['init-auth'])
     assert result.exit_code == 0
@@ -196,6 +198,15 @@ def test_production_index_setup_uses_separate_credential(monkeypatch):
 def test_production_rejects_missing_trusted_proxy_before_connecting():
     with patch('app.MongoClient') as mongo, pytest.raises(ValueError, match='TRUSTED_PROXY_IPS'):
         create_app({'APP_ENV': 'production', 'APP_ORIGIN': 'https://example.com',
-                    'TRUSTED_PROXY_IPS': '', 'SESSION_COOKIE_SECURE': True,
+                    'TRUSTED_PROXY_IPS': '', 'SESSION_COOKIE_SECURE': True, 'JWT_SECRET': JWT_SECRET,
                     'MONGODB_URI': 'mongodb+srv://example.com'})
+    mongo.assert_not_called()
+
+
+@pytest.mark.parametrize('secret', ['', 'curta'])
+def test_production_requires_strong_jwt_secret(secret):
+    with patch('app.MongoClient') as mongo, pytest.raises(ValueError, match='JWT_SECRET'):
+        create_app({'APP_ENV': 'production', 'APP_ORIGIN': 'https://example.com',
+                    'TRUSTED_PROXY_IPS': '127.0.0.1', 'JWT_SECRET': secret,
+                    'SESSION_COOKIE_SECURE': True, 'MONGODB_URI': 'mongodb+srv://example.com'})
     mongo.assert_not_called()

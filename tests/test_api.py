@@ -155,7 +155,7 @@ def test_init_cache_cli(app):
 
 def test_production_never_silently_uses_sqlite():
     with pytest.raises(ValueError, match="Produção exige"):
-        create_app({"APP_ENV": "production", "MONGODB_URI": ""})
+        create_app({"APP_ENV": "production", "MONGODB_URI": "", "JWT_SECRET": "s" * 32})
 
 
 def test_fixed_provider_configuration():

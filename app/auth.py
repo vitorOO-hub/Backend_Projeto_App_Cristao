@@ -1,4 +1,4 @@
-"""Anonymous CSRF sessions, registration, login/logout and own profile."""
+"""JWT session cookies with CSRF, registration, login/logout and own profile."""
 import hashlib
 import hmac
 import re
@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from urllib.parse import urlsplit
 
+import jwt
 from bson import ObjectId
 from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.exceptions import BadRequest
@@ -40,6 +41,11 @@ def configure_auth(app):
         raise ValueError('Sessão anônima deve durar 1800 segundos.')
     if app.config['SESSION_TTL_SECONDS'] != 43200:
         raise ValueError('Sessão autenticada deve durar 43200 segundos.')
+    if not app.config['JWT_SECRET'] and app.config['APP_ENV'] != 'production':
+        # Per-process key: restarting the dev server signs everyone out.
+        app.config['JWT_SECRET'] = secrets.token_urlsafe(32)
+    if len(app.config['JWT_SECRET'].encode('utf-8')) < 32:
+        raise ValueError('JWT_SECRET deve ter pelo menos 32 bytes; obrigatório em produção.')
 
 
 def now():
@@ -56,9 +62,27 @@ def check_origin():
         raise ApiError(403, 'csrf_invalid', 'Origem inválida.')
 
 
+def issue_token(at, ttl, user_id=None):
+    # The random jti makes each token unique; the session record keeps logout revocable.
+    claims = {'jti': secrets.token_urlsafe(32), 'iat': int(at.timestamp()),
+              'exp': int(at.timestamp()) + ttl}
+    if user_id is not None:
+        claims['sub'] = str(user_id)
+    return jwt.encode(claims, current_app.config['JWT_SECRET'], algorithm='HS256')
+
+
 def read_session(at):
     token = request.cookies.get('app_session', '')
     if not token or len(token) > 256:
+        return None
+    try:
+        # exp is compared with now() below, so AUTH_CLOCK drives it in tests.
+        claims = jwt.decode(token, current_app.config['JWT_SECRET'], algorithms=['HS256'],
+                            options={'require': ['jti', 'iat', 'exp'], 'verify_exp': False,
+                                     'verify_iat': False})
+    except jwt.InvalidTokenError:
+        return None
+    if claims['exp'] <= at.timestamp():
         return None
     session = repository().find_session(digest(token))
     if session is None or session['expires_at'] <= at:
@@ -180,7 +204,7 @@ def csrf():
         if not repository().rotate_csrf(session['token_hash'], digest(csrf_token), at):
             session = None
     if session is None:
-        session_token = secrets.token_urlsafe(32)
+        session_token = issue_token(at, 1800)
         session = {'token_hash': digest(session_token), 'csrf_hash': digest(csrf_token),
                    'created_at': at, 'expires_at': at + timedelta(seconds=1800)}
         repository().insert_session(session)
@@ -226,7 +250,7 @@ def login():
     if user is None or not password_ok:
         raise ApiError(401, 'invalid_credentials', 'E-mail ou senha incorretos.')
     ttl = current_app.config['SESSION_TTL_SECONDS']
-    session_token, csrf_token = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+    session_token, csrf_token = issue_token(at, ttl, user['_id']), secrets.token_urlsafe(32)
     repository().delete_session(previous['token_hash'])
     repository().insert_session({'token_hash': digest(session_token), 'user_id': user['_id'],
                                  'csrf_hash': digest(csrf_token), 'created_at': at,

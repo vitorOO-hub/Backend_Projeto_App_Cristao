@@ -1,8 +1,10 @@
 from datetime import timedelta
 
+import jwt
 import pytest
+from bson import ObjectId
 
-from app.auth import digest
+from app.auth import digest, issue_token
 
 EMAIL = 'maria@example.com'
 PASSWORD = 'password12345'
@@ -261,3 +263,60 @@ def test_public_profile_errors(logged):
         response = client.get('/api/users/' + bad)
         assert response.status_code == 400
         assert response.json['error']['code'] == 'validation_error'
+
+
+def test_session_cookie_is_signed_jwt(logged, setup):
+    client, _, time, user, _ = logged
+    secret = setup[0].config['JWT_SECRET']
+    token = client.get_cookie('app_session').value
+    assert jwt.get_unverified_header(token) == {'alg': 'HS256', 'typ': 'JWT'}
+    claims = jwt.decode(token, secret, algorithms=['HS256'], options={'verify_exp': False})
+    assert claims['sub'] == user['id']
+    assert claims['iat'] == int(time[0].timestamp())
+    assert claims['exp'] - claims['iat'] == 43200
+    assert len(claims['jti']) >= 43 and len(token) <= 256
+    anonymous = setup[0].test_client()
+    anonymous.get('/api/auth/csrf')
+    claims = jwt.decode(anonymous.get_cookie('app_session').value, secret, algorithms=['HS256'],
+                        options={'verify_exp': False})
+    assert 'sub' not in claims and claims['exp'] - claims['iat'] == 1800
+
+
+def test_forged_or_unstored_jwt_rejected(logged, setup):
+    client, repo, time, user, _ = logged
+    app = setup[0]
+    token = client.get_cookie('app_session').value
+    header, _, signature = token.split('.')
+    claims = jwt.decode(token, app.config['JWT_SECRET'], algorithms=['HS256'],
+                        options={'verify_exp': False})
+    other = jwt.encode({**claims, 'sub': str(ObjectId())}, 'k' * 32, algorithm='HS256')
+    with app.app_context():
+        unstored = issue_token(time[0], 43200, user['id'])
+    forged = [
+        jwt.encode(claims, 'k' * 32, algorithm='HS256'),
+        jwt.encode(claims, None, algorithm='none'),
+        '.'.join((header, other.split('.')[1], signature)),
+        token[:-10] + ('A' if token[-10] != 'A' else 'B') + token[-9:],
+    ]
+    for value in forged:
+        # Stored on purpose, so only the signature check can refuse it.
+        repo.insert_session({**repo.sessions[digest(token)], 'token_hash': digest(value)})
+        client.set_cookie('app_session', value)
+        assert client.get('/api/me').status_code == 401
+    client.set_cookie('app_session', unstored)
+    assert client.get('/api/me').status_code == 401
+    client.set_cookie('app_session', token)
+    assert client.get('/api/me').status_code == 200
+
+
+def test_jwt_expiry_applies_even_if_record_lives(logged, setup):
+    client, repo, time, user, _ = logged
+    with setup[0].app_context():
+        token = issue_token(time[0], 60, user['id'])
+    repo.insert_session({'token_hash': digest(token), 'csrf_hash': digest('x'),
+                         'user_id': ObjectId(user['id']), 'created_at': time[0],
+                         'expires_at': time[0] + timedelta(hours=12)})
+    client.set_cookie('app_session', token)
+    assert client.get('/api/me').status_code == 200
+    time[0] += timedelta(seconds=60)
+    assert client.get('/api/me').status_code == 401

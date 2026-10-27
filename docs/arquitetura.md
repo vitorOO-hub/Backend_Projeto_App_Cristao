@@ -17,7 +17,7 @@ Estrutura backend criada na T03: `app/`, `tests/`, dependências, `wsgi.py` e co
 
 **Revisão de planejamento em 24/10/2026:** substituir o vencimento obrigatório de 12 horas para usuários comuns por continuidade entre visitas, mantendo uma política mais restritiva para administradores. O código atual ainda exige `SESSION_TTL_SECONDS=43200` para todas as sessões autenticadas. Os prazos desta seção são decisões iniciais do piloto, configuráveis e sujeitos a avaliação; não são exigências acadêmicas nem valores ótimos comprovados pela pesquisa de mercado.
 
-Preservar sessão opaca persistida no MongoDB. A escolha permite revogação no servidor e mantém o identificador inacessível ao JavaScript por meio de cookie HttpOnly. Fechar uma aba ou o navegador não deve encerrar a sessão quando o cookie persistente for preservado. O benefício esperado é reduzir o atrito no retorno; aumento de retenção ainda depende de validação com usuários.
+Preservar sessão persistida no MongoDB; desde 27/10/2026 o cookie carrega um JWT assinado que aponta para esse registro. A escolha permite revogação no servidor e mantém o identificador inacessível ao JavaScript por meio de cookie HttpOnly. Fechar uma aba ou o navegador não deve encerrar a sessão quando o cookie persistente for preservado. O benefício esperado é reduzir o atrito no retorno; aumento de retenção ainda depende de validação com usuários.
 
 ### Política de validade planejada
 
@@ -33,7 +33,7 @@ O papel atual continua sendo consultado no servidor. Promover uma conta de usuá
 
 ### Proteções preservadas
 
-- Gerar identificador aleatório criptográfico de pelo menos 256 bits; armazenar somente seu SHA-256 na coleção `sessions`. Não usar o cookie de sessão padrão do Flask como substituto silencioso desta decisão.
+- O cookie é um JWT HS256 assinado com `JWT_SECRET`: `jti` aleatório criptográfico de 256 bits, `sub` com o id do usuário quando autenticado, `iat` e `exp`. Armazenar somente o SHA-256 do token na coleção `sessions`. Assinatura e `exp` são conferidos antes da consulta, mas o registro continua obrigatório: um JWT válido sem registro (revogado no logout ou forjado com a chave vazada) retorna 401. Não usar o cookie de sessão padrão do Flask como substituto silencioso desta decisão.
 - Cookie `app_session`: HttpOnly, SameSite=Lax, Path=/, sem Domain; Secure em produção HTTPS. Usar Max-Age coerente com a validade efetiva no servidor. A única exceção de Secure é o desenvolvimento explícito em localhost HTTP.
 - Validar `expires_at` e o limite absoluto aplicável em cada acesso; TTL só faz limpeza, não autorização. Sessão persistente é um registro de autorização, não uma conexão HTTP ou processo reservado por usuário.
 - `GET /api/auth/csrf` cria/reutiliza sessão e retorna token CSRF; resposta sem cache. Guardar no servidor o hash do token e comparar em tempo constante. React mantém token em memória, envia `X-CSRF-Token` e cookies nas requisições mutáveis.
