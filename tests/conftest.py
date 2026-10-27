@@ -130,6 +130,11 @@ class FakeAuthRepository:
         user.update(fields)
         return deepcopy(user)
 
+    def set_role(self, user_id, role):
+        self.check()
+        next(u for u in self.users.values() if u['_id'] == user_id)['role'] = role
+        self.sessions = {k: s for k, s in self.sessions.items() if s.get('user_id') != user_id}
+
     def delete_session(self, key):
         self.check()
         self.sessions.pop(key, None)

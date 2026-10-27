@@ -26,6 +26,7 @@ class AuthRepository(Protocol):
     def find_users_by_ids(self, user_ids): ...
     def promote_user(self, email): ...
     def update_user(self, user_id, fields): ...
+    def set_role(self, user_id, role): ...
     def delete_session(self, token_hash): ...
     def failed_logins(self, key, since): ...
     def record_failed_login(self, key, at, expires_at): ...
@@ -37,7 +38,7 @@ class UnavailableAuthRepository:
         raise AuthUnavailable()
 
     initialize = find_session = insert_session = rotate_csrf = insert_user = _unavailable
-    find_user_by_email = find_user_by_username = find_user_by_id = update_user = delete_session = _unavailable
+    find_user_by_email = find_user_by_username = find_user_by_id = update_user = set_role = delete_session = _unavailable
     find_users_by_ids = promote_user = _unavailable
     failed_logins = record_failed_login = clear_failed_logins = _unavailable
 
@@ -145,6 +146,17 @@ class MongoAuthRepository:
         try:
             return self.users.find_one_and_update(
                 {'_id': user_id}, {'$set': fields}, return_document=ReturnDocument.AFTER)
+        except PyMongoError:
+            raise AuthUnavailable() from None
+
+    def set_role(self, user_id, role):
+        scalar_selector(user_id)
+        if role not in ('user', 'admin'):
+            raise ValueError('Papel deve ser user ou admin.')
+        try:
+            self.users.update_one({'_id': user_id}, {'$set': {'role': role}})
+            # Sessões abertas não herdam o papel novo: promoção ou rebaixamento exige novo login.
+            self.sessions.delete_many({'user_id': user_id})
         except PyMongoError:
             raise AuthUnavailable() from None
 

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
+from bson import ObjectId
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from app import create_app
@@ -210,3 +211,21 @@ def test_production_requires_strong_jwt_secret(secret):
                     'TRUSTED_PROXY_IPS': '127.0.0.1', 'JWT_SECRET': secret,
                     'SESSION_COOKIE_SECURE': True, 'MONGODB_URI': 'mongodb+srv://example.com'})
     mongo.assert_not_called()
+
+
+def test_production_set_role_uses_setup_credential(monkeypatch):
+    monkeypatch.setenv('MONGODB_SETUP_URI', 'mongodb+srv://setup.example.com')
+    runtime, setup_client = MagicMock(), MagicMock()
+    setup_client.__enter__.return_value = setup_client
+    collection = setup_client.__getitem__.return_value.__getitem__.return_value
+    collection.find_one.return_value = {'_id': ObjectId()}
+    with patch('app.MongoClient', side_effect=[runtime, setup_client]) as mongo:
+        app = create_app({'APP_ENV': 'production', 'APP_ORIGIN': 'https://example.com',
+                          'TRUSTED_PROXY_IPS': '127.0.0.1', 'JWT_SECRET': JWT_SECRET,
+                          'SESSION_COOKIE_SECURE': True, 'MONGODB_URI': 'mongodb+srv://runtime.example.com'})
+        result = app.test_cli_runner().invoke(args=['set-role', 'admin@example.com', 'admin'])
+    assert result.exit_code == 0, result.output
+    assert mongo.call_args_list[1].args[0] == 'mongodb+srv://setup.example.com'
+    assert collection.update_one.call_args.args[1] == {'$set': {'role': 'admin'}}
+    collection.delete_many.assert_called_once()
+    runtime.__getitem__.return_value.__getitem__.return_value.update_one.assert_not_called()
