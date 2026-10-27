@@ -173,3 +173,24 @@ def test_invalid_unicode_rejected_before_persistence(setup, field):
     assert response.status_code == 400
     assert response.json['error']['code'] == 'validation_error'
     assert not repo.users
+
+
+def test_set_role_cli_promotes_and_ends_sessions(setup):
+    app, client, repo, _ = setup
+    client.post('/api/users', json=payload(), headers=credentials(client))
+    login = client.post('/api/auth/login', json={'email': 'maria@example.com', 'password': '  password12345  '},
+                        headers=credentials(client))
+    assert login.status_code == 200 and client.get('/api/me').json['data']['role'] == 'user'
+    cli = app.test_cli_runner()
+    result = cli.invoke(args=['set-role', ' Maria@Example.com ', 'admin'])
+    assert result.exit_code == 0, result.output
+    assert repo.users['maria@example.com']['role'] == 'admin'
+    assert client.get('/api/me').status_code == 401  # a sessão comum não vira administrativa
+    assert cli.invoke(args=['set-role', 'maria@example.com', 'user']).exit_code == 0
+    assert repo.users['maria@example.com']['role'] == 'user'
+    missing = cli.invoke(args=['set-role', 'ninguem@example.com', 'admin'])
+    assert missing.exit_code == 1 and 'Conta não encontrada' in missing.output
+    assert cli.invoke(args=['set-role', 'maria@example.com', 'root']).exit_code == 2
+    repo.unavailable = True
+    down = cli.invoke(args=['set-role', 'maria@example.com', 'admin'])
+    assert down.exit_code == 1 and 'Traceback' not in down.output

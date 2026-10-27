@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 from pathlib import Path
 
 import click
@@ -147,13 +148,37 @@ def create_app(config=None):
             raise click.ClickException("Autenticação indisponível; confira configuração e rede.") from None
         click.echo("Índices de usuários e sessões inicializados.")
 
-    def initialize_production(kind):
+    @app.cli.command("set-role")
+    @click.argument("email")
+    @click.argument("role", type=click.Choice(["admin", "user"]))
+    def set_role(email, role):
+        """Promote or demote an account; the API never changes roles."""
+        def apply(target):
+            user = target.find_user_by_email(email.strip().lower())
+            if user is None:
+                raise click.ClickException("Conta não encontrada.")
+            target.set_role(user['_id'], role)
+        try:
+            if app.config['APP_ENV'] == 'production':
+                with setup_database() as database:
+                    apply(MongoAuthRepository(database))
+            else:
+                apply(repository)
+        except (AuthUnavailable, ValueError, PyMongoError):
+            raise click.ClickException("Autenticação indisponível; confira configuração e rede.") from None
+        click.echo(f"Papel {role} aplicado; as sessões da conta foram encerradas.")
+
+    @contextmanager
+    def setup_database():
         # The web process does not read or need this higher-privilege credential.
         uri = os.getenv('MONGODB_SETUP_URI', '')
         validate_mongo_transport(uri)
         with MongoClient(uri, serverSelectionTimeoutMS=2000, connectTimeoutMS=2000,
                          socketTimeoutMS=2000, tz_aware=True) as setup_client:
-            database = setup_client[app.config['MONGODB_DATABASE']]
+            yield setup_client[app.config['MONGODB_DATABASE']]
+
+    def initialize_production(kind):
+        with setup_database() as database:
             if kind == 'auth':
                 MongoAuthRepository(database).initialize()
                 MongoRateLimits(database['rate_limits']).initialize()
