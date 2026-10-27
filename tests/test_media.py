@@ -55,6 +55,13 @@ def test_valid_video_is_summarized(monkeypatch, mp4):
     assert kwargs['timeout'] == 10 and kwargs['check'] is False and not kwargs.get('shell')
 
 
+def test_ffprobe_may_only_open_local_files(monkeypatch, mp4):
+    calls = fake_run(monkeypatch)
+    probe_video(mp4, 'ffprobe')
+    command = calls[0][0]
+    assert command[command.index('-protocol_whitelist') + 1] == 'file'
+
+
 def test_audio_is_optional_and_attached_pictures_are_ignored():
     info = variant()
     info['streams'] = [info['streams'][0], {'codec_type': 'video', 'codec_name': 'mjpeg',

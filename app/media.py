@@ -50,7 +50,7 @@ def probe_video(path, ffprobe_path='ffprobe', timeout=10):
     with open(path, 'rb') as stream:
         if stream.read(12)[4:8] != b'ftyp':
             raise invalid_media()
-    command = [ffprobe_path, '-v', 'error', '-print_format', 'json', '-show_format',
+    command = [ffprobe_path, '-v', 'error', '-protocol_whitelist', 'file', '-print_format', 'json', '-show_format',
                '-show_streams', '-i', str(path)]
     try:
         result = subprocess.run(command, capture_output=True, timeout=timeout, check=False,

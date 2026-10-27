@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from bson import ObjectId
 
 from app import create_app
-from app.auth import digest
+from app.auth import digest, issue_token
 from app.storage import LocalStorage
 from app.videos import new_video
 from conftest import FakeAuthRepository
@@ -98,7 +98,9 @@ class World:
         user = {'_id': ObjectId(), 'name': name, 'email_normalized': email, 'password_hash': 'unused',
                 'bio': '', 'role': role, 'created_at': self.time[0]}
         self.auth.users[email] = user
-        token, csrf = f'session-{self.serial}-{ObjectId()}', f'csrf-{self.serial}-{ObjectId()}'
+        csrf = f'csrf-{self.serial}-{ObjectId()}'
+        with self.app.app_context():
+            token = issue_token(self.time[0], 43200, user['_id'])
         self.auth.sessions[digest(token)] = {
             'token_hash': digest(token), 'user_id': user['_id'], 'csrf_hash': digest(csrf),
             'created_at': self.time[0], 'expires_at': self.time[0] + timedelta(hours=12)}
