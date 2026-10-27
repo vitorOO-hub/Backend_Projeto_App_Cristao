@@ -168,6 +168,6 @@ def test_public_and_error_responses_do_not_expose_password_or_session_hash(audit
     user = repo.users['other@example.com']
     response = client.get('/api/users/' + str(user['_id']))
     assert response.status_code == 200
-    assert set(response.json['data']) == {'id', 'name', 'bio', 'created_at'}
+    assert set(response.json['data']) == {'id', 'name', 'username', 'bio', 'created_at'}
     assert user['password_hash'] not in response.text
     assert all(key not in response.text for key in repo.sessions)

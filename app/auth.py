@@ -13,11 +13,13 @@ from flask import Blueprint, Response, current_app, jsonify, request
 from werkzeug.exceptions import BadRequest
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from app.errors import ApiError, EmailConflict
+from app.errors import ApiError, EmailConflict, UsernameConflict
 from app.security import consume_budget
 
 
 ID_PATTERN = re.compile(r'[0-9a-f]{24}')
+# Nome de usuário (@handle): 3–30 caracteres, sem "@", então o login distingue e-mail de usuário pelo "@".
+USERNAME_PATTERN = re.compile(r'(?!.*\.\.)[a-z0-9_](?:[a-z0-9._]{1,28}[a-z0-9_])')
 
 
 def digest(value):
@@ -159,8 +161,8 @@ def iso(value):
 
 
 def user_public(user):
-    return {'id': str(user['_id']), 'name': user['name'], 'bio': user['bio'],
-            'created_at': iso(user['created_at'])}
+    return {'id': str(user['_id']), 'name': user['name'], 'username': user.get('username_normalized'),
+            'bio': user['bio'], 'created_at': iso(user['created_at'])}
 
 
 def user_self(user):
@@ -174,10 +176,17 @@ def set_session_cookie(response, token, ttl):
 
 
 def validate_user(payload):
-    if not isinstance(payload, dict) or set(payload) != {'name', 'email', 'password'}:
+    # `username` é opcional para manter o corpo antigo válido; o formulário React sempre envia.
+    if not isinstance(payload, dict) or not (
+            {'name', 'email', 'password'} <= set(payload) <= {'name', 'username', 'email', 'password'}):
         raise ApiError(400, 'validation_error', 'Dados inválidos.')
     name, email, password = (payload[key] for key in ('name', 'email', 'password'))
-    check_strings((name, email, password))
+    username = payload.get('username')
+    check_strings((name, email, password, username) if 'username' in payload else (name, email, password))
+    if username is not None:
+        username = username.strip().lower()
+        if not USERNAME_PATTERN.fullmatch(username):
+            raise ApiError(400, 'validation_error', 'Dados inválidos.')
     name, email = name.strip(), email.strip().lower()
     local, separator, domain = email.rpartition('@')
     valid_email = (separator and len(local) <= 64 and len(email) <= 254
@@ -188,7 +197,7 @@ def validate_user(payload):
                            for label in domain.split('.')))
     if not (2 <= len(name) <= 80 and valid_email and 12 <= len(password) <= 128):
         raise ApiError(400, 'validation_error', 'Dados inválidos.')
-    return name, email, password
+    return name, username, email, password
 
 
 auth = Blueprint('auth', __name__, url_prefix='/api')
@@ -217,14 +226,18 @@ def csrf():
 @auth.post('/users')
 def register():
     require_csrf()
-    name, email, password = validate_user(json_payload())
+    name, username, email, password = validate_user(json_payload())
     user = {'_id': ObjectId(), 'name': name, 'email_normalized': email,
             'password_hash': generate_password_hash(password, method='scrypt'),
             'bio': '', 'role': 'user', 'created_at': now()}
+    if username is not None:
+        user['username_normalized'] = username
     try:
         repository().insert_user(user)
     except EmailConflict:
         raise ApiError(409, 'email_conflict', 'E-mail já cadastrado.') from None
+    except UsernameConflict:
+        raise ApiError(409, 'username_conflict', 'Nome de usuário já em uso.') from None
     response = jsonify(data=user_self(user))
     response.status_code = 201
     response.headers['Location'] = '/api/users/' + str(user['_id'])
@@ -235,20 +248,25 @@ def register():
 def login():
     previous = require_csrf()
     payload = json_payload()
-    if not isinstance(payload, dict) or set(payload) != {'email', 'password'}:
+    # `login` aceita e-mail ou nome de usuário; `email` continua valendo pelo contrato antigo.
+    if not isinstance(payload, dict) or set(payload) not in ({'email', 'password'}, {'login', 'password'}):
         raise ApiError(400, 'validation_error', 'Dados inválidos.')
-    email, password = payload['email'], payload['password']
-    check_strings((email, password))
-    email, at = email.strip().lower(), now()
-    if len(email) > 254 or len(password) > 128:
+    identifier, password = payload.get('login', payload.get('email')), payload['password']
+    check_strings((identifier, password))
+    identifier, at = identifier.strip().lower(), now()
+    if len(identifier) > 254 or len(password) > 128:
         raise ApiError(400, 'validation_error', 'Dados inválidos.')
-    # Reserve before hashing; successful requests also consume their reservation.
-    consume_budget('login-pair', f'{request.remote_addr}|{email}', 10, 900)
-    user = repository().find_user_by_email(email)
+    if '@' in identifier:
+        user = repository().find_user_by_email(identifier)
+    else:
+        user = repository().find_user_by_username(identifier) if USERNAME_PATTERN.fullmatch(identifier) else None
+    # Reserve before hashing; successful requests also consume their reservation. Keyed by the account
+    # when it exists, so alternating e-mail and username does not double the attempts.
+    consume_budget('login-pair', f'{request.remote_addr}|{user["_id"] if user else identifier}', 10, 900)
     password_ok = check_password_hash(
         user['password_hash'] if user else dummy_hash(), password)
     if user is None or not password_ok:
-        raise ApiError(401, 'invalid_credentials', 'E-mail ou senha incorretos.')
+        raise ApiError(401, 'invalid_credentials', 'E-mail, usuário ou senha incorretos.')
     ttl = current_app.config['SESSION_TTL_SECONDS']
     session_token, csrf_token = issue_token(at, ttl, user['_id']), secrets.token_urlsafe(32)
     repository().delete_session(previous['token_hash'])

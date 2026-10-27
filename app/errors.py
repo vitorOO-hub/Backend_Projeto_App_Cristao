@@ -27,3 +27,7 @@ class DataUnavailable(Exception):
 
 class ReportConflict(Exception):
     pass
+
+
+class UsernameConflict(Exception):
+    pass

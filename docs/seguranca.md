@@ -21,7 +21,7 @@ As janelas são fixas, alinhadas ao relógio UTC. Um limite de L pode admitir um
 | CSRF por IP | 30 requisições/minuto |
 | Cadastro por IP | 5 requisições/15 minutos |
 | Login por IP | 60 requisições/15 minutos |
-| Login por IP/e-mail normalizado | 10 tentativas/15 minutos, incluindo sucesso |
+| Login por IP/conta (IP/identificador normalizado se a conta não existe) | 10 tentativas/15 minutos, incluindo sucesso |
 | Consulta bíblica por IP | 60 requisições/minuto |
 | Publicação de vídeo por IP | 10 requisições/15 minutos |
 | Comentário por IP | 30 requisições/minuto |

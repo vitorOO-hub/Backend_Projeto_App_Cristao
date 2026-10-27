@@ -6,7 +6,7 @@ import pytest
 import requests
 
 from app import create_app
-from app.errors import AuthUnavailable, EmailConflict
+from app.errors import AuthUnavailable, EmailConflict, UsernameConflict
 
 
 @pytest.fixture(autouse=True)
@@ -92,12 +92,19 @@ class FakeAuthRepository:
         self.check()
         if self.race or document['email_normalized'] in self.users:
             raise EmailConflict()
+        username = document.get('username_normalized')
+        if username is not None and self.find_user_by_username(username):
+            raise UsernameConflict()
         self.users[document['email_normalized']] = deepcopy(document)
         return document
 
     def find_user_by_email(self, email):
         self.check()
         return deepcopy(self.users.get(email))
+
+    def find_user_by_username(self, username):
+        self.check()
+        return deepcopy(next((u for u in self.users.values() if u.get('username_normalized') == username), None))
 
     def find_user_by_id(self, user_id):
         self.check()
