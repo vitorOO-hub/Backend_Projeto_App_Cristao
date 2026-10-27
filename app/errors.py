@@ -19,3 +19,11 @@ class AuthUnavailable(Exception):
 
 class EmailConflict(Exception):
     pass
+
+
+class DataUnavailable(Exception):
+    pass
+
+
+class ReportConflict(Exception):
+    pass

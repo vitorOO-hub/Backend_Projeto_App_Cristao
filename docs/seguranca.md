@@ -23,6 +23,10 @@ As janelas são fixas, alinhadas ao relógio UTC. Um limite de L pode admitir um
 | Login por IP | 60 requisições/15 minutos |
 | Login por IP/e-mail normalizado | 10 tentativas/15 minutos, incluindo sucesso |
 | Consulta bíblica por IP | 60 requisições/minuto |
+| Publicação de vídeo por IP | 10 requisições/15 minutos |
+| Comentário por IP | 30 requisições/minuto |
+| Denúncia por IP | 10 requisições/15 minutos |
+| Mídia (`/videos/{id}/media`) por IP | 600 requisições/minuto, em vez do orçamento geral de 120, porque um player faz várias requisições `Range` |
 
 O limite por origem é verificado antes de consumir o orçamento global; um IP já bloqueado não gasta novamente o orçamento global. Os contadores não são apagados no login bem-sucedido. CSRF é proteção contra ações induzidas por outros sites, não contra automação que obtém sua própria sessão.
 
@@ -30,7 +34,7 @@ Produção utiliza `rate_limits` no MongoDB, com reserva atômica condicional e 
 
 Somente desenvolvimento/teste sem URI utiliza SQLite persistente, ao lado do cache local, compartilhado entre workers que acessam o mesmo arquivo. Produção nunca faz fallback de contadores para memória/SQLite. Se o armazenamento de limites falhar, retornar 503 em vez de permitir acesso sem limitação; `/api/health` permanece disponível e não comprova readiness.
 
-As rotas atuais de API aceitam corpo de até **16 KiB** no Flask e no modelo Nginx. Conteúdo excedente declarado é recusado antes da leitura; a leitura de conteúdo também respeita o limite do Flask. O upload futuro exigirá liberação explícita de 51 MiB somente na rota validada de upload, nas duas camadas.
+As rotas atuais de API aceitam corpo de até **16 KiB** no Flask e no modelo Nginx. Conteúdo excedente declarado é recusado antes da leitura; a leitura de conteúdo também respeita o limite do Flask. O upload (`POST /api/videos`) é a única rota liberada para 51 MiB, no Flask (`protect_requests`) e, no modelo Nginx, em `location = /api/videos`. Qualquer outra rota continua em 16 KiB.
 
 O Nginx modelo acrescenta limites por IP (5 req/s, burst 20), servidor (30 req/s, burst 60) e 10 requisições simultâneas por IP. A área compartilhada dos limites deve ficar no contexto `http`. Respostas 413/429 produzidas pelo proxy podem não ter o envelope JSON ou Retry-After do Flask; o cliente precisa tratar o status HTTP e oferecer nova tentativa sem repetir mutações de resultado desconhecido.
 
@@ -56,10 +60,15 @@ Usar credenciais diferentes para a aplicação web e as tarefas de inicializaç�
 | sessions | find, insert, update, remove; sem drop |
 | rate_limits | find, insert, update; sem remove/drop |
 | bible_cache | find, insert, update; sem drop |
+| videos | find, insert, update; sem remove/drop (exclusão é lógica) |
+| reactions | find, insert, remove; sem update/drop |
+| comments | find, insert, remove; sem update/drop |
+| reports | find, insert, update; sem remove/drop |
+| blocks | find, insert, remove; sem update/drop |
 
 Não atribuir `atlasAdmin`, acesso a todos os bancos ou administração de usuários ao runtime. As permissões reais são a união de todos os papéis atribuídos; adicionar um papel restrito não remove permissões amplas existentes. Validar a matriz contra o código e o plano de cluster em banco isolado. Permissão update/remove pode permitir destruição de documentos em caso de comprometimento do processo, mesmo sem drop; backups continuam necessários.
 
-Em production, `init-auth` e `init-cache` exigem **MONGODB_SETUP_URI** com TLS, fornecida apenas ao processo operacional, além da configuração normal. Esses comandos não substituem silenciosamente a credencial operacional pela runtime. `init-auth` cria índices de usuários/sessões, contadores novos e índices legados de `login_attempts`; os registros legados vencem pelo TTL e não são mais usados para limitar novos logins.
+Em production, `init-auth` e `init-cache` exigem **MONGODB_SETUP_URI** com TLS, fornecida apenas ao processo operacional, além da configuração normal. Esses comandos não substituem silenciosamente a credencial operacional pela runtime. `init-auth` cria índices de usuários/sessões, contadores novos e índices legados de `login_attempts`; `init-db` cria os índices de `videos`, `reactions`, `comments`, `reports` e `blocks` e também exige `MONGODB_SETUP_URI` em produção; os registros legados vencem pelo TTL e não são mais usados para limitar novos logins.
 
 Fornecer MONGODB_SETUP_URI por arquivo de ambiente restrito ou mecanismo de segredo do ambiente operacional, executar os comandos e retirar o segredo desse contexto. Não colar URI em terminal compartilhado, Git, logs ou variáveis de build React. O serviço systemd deve receber somente a URI runtime. A separação de código não comprova que os papéis reais foram configurados corretamente.
 

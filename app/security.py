@@ -158,17 +158,26 @@ def consume_budget(scope, identity, limit, seconds):
 def protect_requests():
     # Reject oversized JSON before Flask reads/parses it. Upload retains its own limit.
     if request.path.startswith('/api/'):
-        request.max_content_length = 16 * 1024
+        # Only the upload route may exceed the small JSON limit, up to MAX_REQUEST_BYTES.
+        request.max_content_length = (current_app.config['MAX_CONTENT_LENGTH']
+                                      if request.endpoint == 'videos.create' else 16 * 1024)
         if request.content_length is not None and request.content_length > request.max_content_length:
             raise RequestEntityTooLarge()
     if not request.endpoint or request.endpoint == 'api.health':
         return
-    consume_budget('api-ip', request.remote_addr or 'unknown', 120, 60)
+    # Players issue many Range requests, so media has its own, larger budget.
+    if request.endpoint == 'videos.media':
+        consume_budget('media-ip', request.remote_addr or 'unknown', 600, 60)
+    else:
+        consume_budget('api-ip', request.remote_addr or 'unknown', 120, 60)
     policies = {
         'auth.csrf': ('csrf', 30, 60),
         'auth.register': ('register', 5, 900),
         'auth.login': ('login-ip', 60, 900),
         'api.passages': ('bible', 60, 60),
+        'videos.create': ('upload', 10, 900),
+        'social.create_comment': ('comment', 30, 60),
+        'social.report': ('report', 10, 900),
     }
     policy = policies.get(request.endpoint)
     if policy:

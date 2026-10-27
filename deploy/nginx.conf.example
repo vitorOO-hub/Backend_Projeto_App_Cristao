@@ -43,7 +43,20 @@ server {
     location / {
         try_files $uri $uri/ /index.html;
     }
-    # Uploads nunca são servidos por alias público.
-    # Ao implementar upload, liberar 51m somente na rota exata e validada,
-    # com o limite correspondente no Flask; não ampliar autenticação/perfil.
+    # Único ponto que aceita corpo grande: publicação de vídeo (51 MiB, igual ao Flask).
+    # GET /api/videos (feed) também casa aqui, mas não tem corpo. Os arquivos nunca são
+    # servidos por alias público: a mídia sai por /api/videos/{id}/media, com autorização.
+    location = /api/videos {
+        client_max_body_size 51m;
+        client_body_timeout 60s;
+        limit_req zone=api_per_ip burst=20 nodelay;
+        limit_req zone=api_global burst=60 nodelay;
+        limit_conn api_connections 10;
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_read_timeout 60s;
+        access_log off;
+    }
 }

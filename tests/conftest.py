@@ -103,6 +103,18 @@ class FakeAuthRepository:
         self.check()
         return deepcopy(next((u for u in self.users.values() if u['_id'] == user_id), None))
 
+    def find_users_by_ids(self, user_ids):
+        self.check()
+        user_ids = set(user_ids)
+        return {u['_id']: deepcopy(u) for u in self.users.values() if u['_id'] in user_ids}
+
+    def promote_user(self, email):
+        self.check()
+        if email not in self.users:
+            return False
+        self.users[email]['role'] = 'admin'
+        return True
+
     def update_user(self, user_id, fields):
         self.check()
         user = next((u for u in self.users.values() if u['_id'] == user_id), None)
@@ -136,3 +148,9 @@ def setup(tmp_path):
                       'CACHE_SQLITE_PATH': tmp_path / 'cache', 'AUTH_REPOSITORY': repo,
                       'AUTH_CLOCK': lambda: time[0], 'SESSION_COOKIE_SECURE': False})
     return app, app.test_client(), repo, time
+
+
+@pytest.fixture
+def world(tmp_path):
+    from world import World
+    return World(tmp_path)

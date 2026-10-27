@@ -1,6 +1,6 @@
-# Contrato da API — v0.6
+# Contrato da API — v0.7
 
-**Data:** 24/10/2026. **Estado:** `/api/health` e `/api/bible/passages` implementadas e verificadas na T03. Autenticação implementada com verificação local isolada: GET `/api/auth/csrf`, POST `/api/users`, POST `/api/auth/login`, POST `/api/auth/logout`, GET/PATCH `/api/me` e GET `/api/users/{id}`; integração Atlas e React pendentes. O código mantém sessões autenticadas de 12 horas. A política persistente e a rota de renovação desta versão são planejadas, ainda não implementadas. As demais rotas são contratos para tarefas futuras. Referência: [arquitetura](arquitetura.md) e RF01–RF13 do [escopo](escopo-e-requisitos.md).
+**Data:** 24/10/2026. **Estado:** `/api/health` e `/api/bible/passages` implementadas e verificadas na T03. Autenticação implementada com verificação local isolada: GET `/api/auth/csrf`, POST `/api/users`, POST `/api/auth/login`, POST `/api/auth/logout`, GET/PATCH `/api/me` e GET `/api/users/{id}`; integração Atlas e React pendentes. O código mantém sessões autenticadas de 12 horas. A política persistente e a rota de renovação desta versão são planejadas, ainda não implementadas. As rotas de vídeo, feed, mídia, reações, comentários, denúncias, bloqueios e moderação também estão implementadas (ver "Estado implementado das rotas de vídeo, interações e moderação"). Referência: [arquitetura](arquitetura.md) e RF01–RF13 do [escopo](escopo-e-requisitos.md).
 
 ## Convenções
 
@@ -149,6 +149,24 @@ Cache de 24 horas checado a cada consulta; falhas não são armazenadas. Cache i
 ## 7. Verificação de operação
 
 GET `/health`, público: 200 com `data.status=ok` e sem segredos quando o processo está de pé. Não consulta Atlas e não comprova readiness. Verificação de Atlas deve ser registrada separadamente, sem expor URI ou detalhes internos em endpoint público.
+
+## Estado implementado das rotas de vídeo, interações e moderação
+
+Todas as rotas das seções 2 a 5 estão implementadas (`app/video_api.py`, `app/social_api.py`, `app/moderation_api.py`), com testes automatizados e um fluxo completo verificado contra o Atlas de desenvolvimento (cadastro, publicação, moderação, reação, comentário, denúncia, bloqueio e exclusão). O `ffprobe` real ainda não foi exercitado: o fluxo usou um substituto, pois a ferramenta não está instalada no ambiente de desenvolvimento. React ainda não consome estas rotas.
+
+**Convenções adotadas na implementação**
+
+- **Visibilidade:** vídeo pendente, rejeitado, excluído ou de autor bloqueado pelo consultante responde **404** a quem não pode vê-lo. Quem pode ver mas não tem permissão para a ação recebe **403** (ex.: editar vídeo aprovado de outra pessoa). Interações (reação, comentário, denúncia) só existem em vídeo aprovado e visível; em qualquer outro caso a resposta é 404, inclusive para o autor.
+- **Paginação:** `limit` de 1 a 30 (padrão 10) e `cursor` opaco. O cursor só vale para a mesma listagem e os mesmos filtros; outro filtro, cursor adulterado ou parâmetro desconhecido/repetido retorna 400. `has_more` vem de uma busca de `limit + 1` itens, e `next_cursor` é `null` na última página.
+- **Identificadores** malformados na URL ou na query retornam 400.
+- **Publicação** (`POST /videos`): `multipart/form-data` com exatamente um campo `file` (nome terminado em `.mp4`) e os campos `caption`, `category` e, opcionalmente, `bible_reference`; qualquer outro campo é 400. Erros específicos: 415 (tipo ou extensão), 413 (arquivo acima de 50 MiB ou requisição acima de 51 MiB), 422 `invalid_media` (não é MP4 H.264, com áudio AAC opcional, de até 90 s) e 503 `media_unavailable` (sem `ffprobe`; o arquivo nunca é aceito sem validação). Em falha, o arquivo temporário e o já gravado são removidos.
+- **Edição** (`PATCH /videos/{id}`): vídeo aprovado volta a pendente e perde a revisão; pendente e rejeitado mantêm o estado.
+- **Exclusão** (`DELETE /videos/{id}`): 204 e invisibilidade imediata; arquivo, reações e comentários são removidos em seguida. Se a limpeza física falhar, o vídeo continua invisível e `flask --app app purge-videos` conclui o trabalho. As denúncias são preservadas.
+- **Mídia** (`GET /videos/{id}/media`): mesma visibilidade do detalhe, suporte a `Range` (206/416) e `Cache-Control: private, no-store`.
+- **Comentários:** autores bloqueados pelo consultante saem da lista e da contagem antes da paginação. Apagar o próprio comentário é permitido mesmo depois de o vídeo deixar de ser público.
+- **Denúncias:** uma denúncia aberta por usuário e vídeo; repetir retorna 409 `already_reported`. Denunciar não altera o vídeo.
+- **Moderação:** exige papel `admin` lido do banco a cada requisição (403 para usuário comum). `PATCH /moderation/videos/{id}` exige exatamente `status` (`approved` ou `rejected`), `reason` e `expected_updated_at` (instante ISO 8601 com fuso, comparado em milissegundos); 409 `conflict` se o vídeo mudou ou a transição não é permitida, 404 se não existe. Resolver uma denúncia já resolvida retorna 409.
+- **Administrador:** só pode ser definido no servidor, com `flask --app app create-admin <e-mail>` sobre uma conta já cadastrada. Nenhuma rota HTTP concede o papel; o cadastro e o `PATCH /me` rejeitam `role`.
 
 ## Entrega da primeira fatia (T04)
 

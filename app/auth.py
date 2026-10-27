@@ -89,6 +89,25 @@ def authenticated_user(session):
     return user
 
 
+def csrf_user():
+    """A mutating request: valid CSRF first, then the authenticated account."""
+    return authenticated_user(require_csrf())
+
+
+def optional_user():
+    """The signed-in account, or None for visitors; never raises for a missing session."""
+    session = read_session(now())
+    if session is None or not session.get('user_id'):
+        return None
+    return repository().find_user_by_id(session['user_id'])
+
+
+def require_admin(user):
+    if user['role'] != 'admin':
+        raise ApiError(403, 'forbidden', 'Permissão insuficiente.')
+    return user
+
+
 def json_payload():
     try:
         return request.get_json(silent=False) if request.is_json else None

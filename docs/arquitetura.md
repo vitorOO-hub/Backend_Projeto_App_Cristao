@@ -96,6 +96,8 @@ Sem `ffprobe`, continuam possíveis testes com subprocesso simulado, formulário
 
 Usar ObjectId no banco e IDs hexadecimais de 24 caracteres como strings na API. Datas BSON UTC; serialização ISO 8601 com `Z`. Nunca enviar senha, hashes de sessão ou caminhos internos.
 
+O documento de `videos`, os campos técnicos do arquivo, o tombstone de exclusão e a lista completa de índices estão em [modelo de dados](modelo-de-dados.md), que prevalece sobre esta lista quando divergirem.
+
 Índices iniciais: `users.email_normalized` único; `sessions.token_hash` único e TTL separado; `videos(status, created_at desc, _id desc)`; `videos(author_id, created_at desc, _id desc)`; `reactions(user_id, video_id)` único; `blocks(user_id, blocked_user_id)` único; `comments(video_id, created_at, _id)`; `reports(status, created_at, _id)`. Nomear índices e criá-los por rotina explícita, sem apagar dados.
 
 Listagens têm limite padrão 10, máximo 30, e cursor estável. Vídeos ordenados por `created_at desc, _id desc`; cursor carrega último par e contexto do filtro. Mudanças de categoria exigem reinício da paginação. Aplicar visibilidade/bloqueio antes do limite; bloqueios novos entre páginas podem reduzir resultados, sem promessa de snapshot imutável.

@@ -84,15 +84,34 @@ Os modelos não foram instalados no sistema. Nginx/HTTPS e frontend ainda não e
 
 O custo e a autorização de recursos continuam sob controle do usuário; este documento não executa provisionamento. Preparar esses arquivos atende à parte de preparação da T03, sem concluir RA05 ou CA12.
 
+## Vídeos, ffprobe e comandos operacionais
+
+Variáveis consumidas: `UPLOAD_DIR` (padrão `instance/uploads`, relativo à raiz do backend; em produção, um volume persistente fora do código, como `/var/lib/app-cristao/uploads`, pertencente ao usuário do serviço), `MAX_VIDEO_BYTES` (50 MiB), `MAX_REQUEST_BYTES` (51 MiB, limite do corpo somente na rota de upload) e `FFPROBE_PATH`. `MAX_VIDEO_SECONDS` documenta o limite de 90 s, que o código aplica por constante.
+
+**ffprobe é obrigatório para publicar.** Sem ele, `POST /api/videos` retorna 503 `media_unavailable` e nenhum arquivo é aceito. Instalar o FFmpeg (que inclui o `ffprobe`) e conferir com `ffprobe -version`: no Windows, por exemplo, `winget install Gyan.FFmpeg`; na EC2 (Amazon Linux/Ubuntu), pelo gerenciador de pacotes. Se o executável não estiver no `PATH`, apontar `FFPROBE_PATH` para ele. O Gunicorn tem timeout de 30 s; uploads lentos ou muito grandes podem exigir ajuste coordenado com o `proxy_read_timeout` do Nginx.
+
+Comandos (`flask --app app <comando>`):
+
+| Comando | Para que serve |
+| --- | --- |
+| `init-auth`, `init-cache`, `init-db` | Índices de contas/sessões/limites, cache e coleções do produto. Em produção exigem `MONGODB_SETUP_URI`. |
+| `create-admin <e-mail>` | Promove uma conta **já cadastrada** a administrador. Em produção usa `MONGODB_SETUP_URI`. A conta precisa entrar de novo para usar o painel. |
+| `purge-videos` | Conclui a remoção física (arquivo, reações, comentários) de vídeos excluídos cuja limpeza falhou; idempotente e seguro de agendar. |
+
+Fluxo de uma publicação: o arquivo é copiado para uma área temporária em `UPLOAD_DIR/tmp` (interrompido ao passar de 50 MiB), validado com o `ffprobe` (MP4, uma faixa H.264, áudio AAC opcional, até 90 s), movido com nome gerado pelo servidor (`<uuid>.mp4`) e só então registrado no MongoDB. Qualquer falha remove o temporário e o arquivo já movido. O diretório de uploads nunca é servido diretamente.
+
+No Windows, um arquivo de vídeo ainda aberto por uma resposta em andamento não pode ser apagado; nesse caso a exclusão do vídeo continua valendo (ele fica invisível) e a limpeza física fica para o `purge-videos`.
+
 ## Cadastro e CSRF — T04.1
 
 Contas e sessões usam somente MongoDB; sem `MONGODB_URI`, as novas rotas retornam 503 controlado (sem fallback SQLite ou memória). Configure a URI fora do Git e execute antes do uso:
 
 ```bash
 .venv/bin/flask --app app init-auth
+.venv/bin/flask --app app init-db
 ```
 
-O comando cria índices únicos de e-mail normalizado e hash de sessão, TTL de sessões e do novo limitador `rate_limits`, além de índices legados de `login_attempts`. A coleção legada não limita mais novos logins; preservar sua limpeza TTL sem migrar falhas antigas para os novos orçamentos. Conflitos/dados existentes ou banco inacessível causam falha controlada. Preserve os índices únicos para garantir duplicação inclusive em concorrência. Em produção, fornecer `MONGODB_SETUP_URI` apenas ao processo operacional conforme os pré-requisitos acima.
+`init-db` cria os índices das coleções de vídeos, reações, comentários, denúncias e bloqueios ([modelo de dados](modelo-de-dados.md)); exige `MONGODB_URI`, sem fallback local. O comando `init-auth` cria índices únicos de e-mail normalizado e hash de sessão, TTL de sessões e do novo limitador `rate_limits`, além de índices legados de `login_attempts`. A coleção legada não limita mais novos logins; preservar sua limpeza TTL sem migrar falhas antigas para os novos orçamentos. Conflitos/dados existentes ou banco inacessível causam falha controlada. Preserve os índices únicos para garantir duplicação inclusive em concorrência. Em produção, fornecer `MONGODB_SETUP_URI` apenas ao processo operacional conforme os pré-requisitos acima.
 
 Fluxo: GET `/api/auth/csrf` → guardar cookie e `data.csrf_token` → POST `/api/users` com JSON `name`, `email`, `password` e cabeçalho `X-CSRF-Token`. Cadastro retorna 201, sem autenticar a sessão. Uma nova consulta CSRF rotaciona o token e preserva o prazo absoluto da sessão existente. Sessões armazenam somente hashes dos tokens; senhas usam scrypt.
 

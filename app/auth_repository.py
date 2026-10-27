@@ -22,6 +22,8 @@ class AuthRepository(Protocol):
     def insert_user(self, document): ...
     def find_user_by_email(self, email): ...
     def find_user_by_id(self, user_id): ...
+    def find_users_by_ids(self, user_ids): ...
+    def promote_user(self, email): ...
     def update_user(self, user_id, fields): ...
     def delete_session(self, token_hash): ...
     def failed_logins(self, key, since): ...
@@ -35,6 +37,7 @@ class UnavailableAuthRepository:
 
     initialize = find_session = insert_session = rotate_csrf = insert_user = _unavailable
     find_user_by_email = find_user_by_id = update_user = delete_session = _unavailable
+    find_users_by_ids = promote_user = _unavailable
     failed_logins = record_failed_login = clear_failed_logins = _unavailable
 
 
@@ -97,6 +100,27 @@ class MongoAuthRepository:
         scalar_selector(user_id)
         try:
             return self.users.find_one({'_id': user_id})
+        except PyMongoError:
+            raise AuthUnavailable() from None
+
+    def find_users_by_ids(self, user_ids):
+        """Authors of one page of results, keyed by id."""
+        user_ids = list(user_ids)
+        if len(user_ids) > 100 or any(not isinstance(value, ObjectId) for value in user_ids):
+            raise ValueError('Lote de identificadores inválido.')
+        if not user_ids:
+            return {}
+        try:
+            return {user['_id']: user for user in self.users.find({'_id': {'$in': user_ids}})}
+        except PyMongoError:
+            raise AuthUnavailable() from None
+
+    def promote_user(self, email):
+        """Operational use only (flask create-admin); there is no HTTP route for this."""
+        scalar_selector(email)
+        try:
+            return self.users.update_one({'email_normalized': email},
+                                         {'$set': {'role': 'admin'}}).matched_count == 1
         except PyMongoError:
             raise AuthUnavailable() from None
 
