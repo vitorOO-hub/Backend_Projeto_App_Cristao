@@ -17,14 +17,16 @@ from app.auth import auth, configure_auth
 from app.media import probe_video
 from app.moderation_api import moderation
 from app.purge import purge_pending
+from app.profile_api import profile
 from app.social_api import social
 from app.storage import LocalStorage
 from app.video_api import videos
 from app.auth_repository import MongoAuthRepository, UnavailableAuthRepository
 from app.social_repository import (MongoBlockRepository, MongoCommentRepository,
-                                   MongoReactionRepository, MongoReportRepository,
+                                   MongoFollowRepository, MongoReactionRepository, MongoReportRepository,
                                    UnavailableBlockRepository, UnavailableCommentRepository,
-                                   UnavailableReactionRepository, UnavailableReportRepository)
+                                   UnavailableFollowRepository, UnavailableReactionRepository,
+                                   UnavailableReportRepository)
 from app.video_repository import MongoVideoRepository, UnavailableVideoRepository
 from app.security import (MongoRateLimits, SQLiteRateLimits, configure_security,
                           protect_requests, validate_mongo_transport)
@@ -78,7 +80,8 @@ def create_app(config=None):
             ("reaction", MongoReactionRepository, UnavailableReactionRepository),
             ("comment", MongoCommentRepository, UnavailableCommentRepository),
             ("report", MongoReportRepository, UnavailableReportRepository),
-            ("block", MongoBlockRepository, UnavailableBlockRepository)):
+            ("block", MongoBlockRepository, UnavailableBlockRepository),
+            ("follow", MongoFollowRepository, UnavailableFollowRepository)):
         app.extensions[f"{name}_repository"] = app.config.get(f"{name.upper()}_REPOSITORY") or (
             real(mongo[app.config["MONGODB_DATABASE"]]) if mongo is not None else offline())
     app.extensions['rate_limits'] = app.config.get('RATE_LIMITS') or (
@@ -88,6 +91,7 @@ def create_app(config=None):
     app.register_blueprint(auth)
     app.register_blueprint(videos)
     app.register_blueprint(social)
+    app.register_blueprint(profile)
     app.register_blueprint(moderation)
     upload_dir = Path(app.config["UPLOAD_DIR"])
     if not upload_dir.is_absolute():
