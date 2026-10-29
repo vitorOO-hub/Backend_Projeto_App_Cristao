@@ -19,6 +19,8 @@ INDEXES = {
     'reactions': [
         IndexModel([('user_id', 1), ('video_id', 1)], unique=True, name='reactions_user_video_unique'),
         IndexModel([('video_id', 1)], name='reactions_video'),
+        # "Curtidos" of the profile: a user's reactions, newest first.
+        IndexModel([('user_id', 1), ('created_at', -1), ('_id', -1)], name='reactions_user'),
     ],
     'comments': [
         IndexModel([('video_id', 1), ('created_at', 1), ('_id', 1)], name='comments_video'),
@@ -28,6 +30,11 @@ INDEXES = {
         # One open report per user and video.
         IndexModel([('video_id', 1), ('reporter_id', 1)], unique=True, name='reports_open_unique',
                    partialFilterExpression={'status': 'open'}),
+    ],
+    'follows': [
+        IndexModel([('follower_id', 1), ('followee_id', 1)], unique=True, name='follows_pair_unique'),
+        IndexModel([('followee_id', 1), ('created_at', -1), ('_id', -1)], name='follows_followers'),
+        IndexModel([('follower_id', 1), ('created_at', -1), ('_id', -1)], name='follows_following'),
     ],
     'blocks': [
         IndexModel([('user_id', 1), ('blocked_user_id', 1)], unique=True, name='blocks_pair_unique'),

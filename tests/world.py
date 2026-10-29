@@ -9,8 +9,8 @@ from app.auth import digest, issue_token
 from app.storage import LocalStorage
 from app.videos import new_video
 from conftest import FakeAuthRepository
-from fakes import (FakeBlockRepository, FakeCommentRepository, FakeReactionRepository,
-                   FakeReportRepository, FakeVideoRepository)
+from fakes import (FakeBlockRepository, FakeCommentRepository, FakeFollowRepository,
+                   FakeReactionRepository, FakeReportRepository, FakeVideoRepository)
 
 MP4_BYTES = b'\x00\x00\x00\x18ftypmp42' + b'0' * 200
 PROBE_RESULT = {'duration_seconds': 42.5, 'video_codec': 'h264', 'audio_codec': 'aac',
@@ -62,6 +62,8 @@ class World:
         self.comments = FakeCommentRepository()
         self.reports = FakeReportRepository()
         self.blocks = FakeBlockRepository()
+        self.follows = FakeFollowRepository()
+        self.reactions.videos = self.videos
         self.storage = LocalStorage(tmp_path / 'uploads')
         self.time = [datetime(2026, 10, 27, 12, 0, tzinfo=timezone.utc)]
         self.probe_calls, self.probe_result, self.probe_error = [], dict(PROBE_RESULT), None
@@ -70,7 +72,7 @@ class World:
             'CACHE_SQLITE_PATH': tmp_path / 'cache', 'AUTH_CLOCK': lambda: self.time[0],
             'AUTH_REPOSITORY': self.auth, 'VIDEO_REPOSITORY': self.videos,
             'REACTION_REPOSITORY': self.reactions, 'COMMENT_REPOSITORY': self.comments,
-            'REPORT_REPOSITORY': self.reports, 'BLOCK_REPOSITORY': self.blocks,
+            'REPORT_REPOSITORY': self.reports, 'BLOCK_REPOSITORY': self.blocks, 'FOLLOW_REPOSITORY': self.follows,
             'STORAGE': self.storage, 'MEDIA_PROBE': self.probe})
         self.serial = 0
 

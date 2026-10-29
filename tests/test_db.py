@@ -17,7 +17,7 @@ def keys(collection, name):
 
 
 def test_planned_collections_and_unique_index_names():
-    assert set(INDEXES) == {'videos', 'reactions', 'comments', 'reports', 'blocks'}
+    assert set(INDEXES) == {'videos', 'reactions', 'comments', 'reports', 'blocks', 'follows'}
     names = [name for collection in INDEXES for name in spec(collection)]
     assert len(names) == len(set(names))
     assert all(name.startswith(collection + '_') for collection in INDEXES for name in spec(collection))

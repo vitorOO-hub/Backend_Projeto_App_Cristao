@@ -1,6 +1,8 @@
 """In-memory stand-ins for the Mongo repositories, honouring the same contracts."""
 from copy import deepcopy
 
+from bson import ObjectId
+
 from app.errors import DataUnavailable, ReportConflict
 from app.videos import EMPTY_REVIEW, to_millis
 
@@ -56,6 +58,15 @@ class FakeVideoRepository(Switch):
         self.check()
         items = [v for v in self.live() if v['author_id'] == author_id and status in (None, v['status'])]
         return page(items, True, limit, after)
+
+    def find_approved_by_ids(self, video_ids, exclude_authors=()):
+        self.check()
+        return [deepcopy(v) for v in self.live() if v['_id'] in video_ids and v['status'] == 'approved'
+                and v['author_id'] not in exclude_authors]
+
+    def count_approved_by_author(self, author_id):
+        self.check()
+        return sum(1 for v in self.live() if v['status'] == 'approved' and v['author_id'] == author_id)
 
     def list_for_review(self, *, status='pending', limit=10, after=None):
         self.check()
@@ -128,6 +139,22 @@ class FakeReactionRepository(Switch):
     def reacted_by(self, user_id, video_ids):
         self.check()
         return {video_id for user, video_id in self.pairs if user == user_id and video_id in video_ids}
+
+    def list_by_user(self, user_id, *, limit=10, after=None):
+        self.check()
+        items = [{'_id': video_id, 'user_id': user, 'video_id': video_id, 'created_at': at}
+                 for (user, video_id), at in self.pairs.items() if user == user_id]
+        return page(items, True, limit, after)
+
+    def count_by_user(self, user_id):
+        self.check()
+        return sum(1 for user, _ in self.pairs if user == user_id)
+
+    def count_received(self, author_id):
+        """Reactions on the author's approved, undeleted videos; `videos` is wired by the test world."""
+        self.check()
+        mine = {v['_id'] for v in self.videos.live() if v['status'] == 'approved' and v['author_id'] == author_id}
+        return sum(1 for _, video_id in self.pairs if video_id in mine)
 
     def delete_for_video(self, video_id):
         self.check()
@@ -238,3 +265,39 @@ class FakeBlockRepository(Switch):
     def exists(self, user_id, blocked_user_id):
         self.check()
         return (user_id, blocked_user_id) in self.blocks
+
+
+class FakeFollowRepository(Switch):
+    def __init__(self):
+        super().__init__()
+        self.follows = {}
+
+    def add(self, follower_id, followee_id, at):
+        self.check()
+        self.follows.setdefault((follower_id, followee_id), (ObjectId(), to_millis(at)))
+
+    def remove(self, follower_id, followee_id):
+        self.check()
+        self.follows.pop((follower_id, followee_id), None)
+
+    def rows(self, user_id, side, excluded):
+        other = 1 - side
+        return [{'_id': key_id, 'follower_id': pair[0], 'followee_id': pair[1], 'created_at': at}
+                for pair, (key_id, at) in self.follows.items()
+                if pair[side] == user_id and pair[other] not in excluded]
+
+    def list_followers(self, user_id, *, exclude_users=(), limit=10, after=None):
+        self.check()
+        return page(self.rows(user_id, 1, exclude_users), True, limit, after)
+
+    def list_following(self, user_id, *, exclude_users=(), limit=10, after=None):
+        self.check()
+        return page(self.rows(user_id, 0, exclude_users), True, limit, after)
+
+    def count_followers(self, user_id, exclude_users=()):
+        self.check()
+        return len(self.rows(user_id, 1, exclude_users))
+
+    def count_following(self, user_id, exclude_users=()):
+        self.check()
+        return len(self.rows(user_id, 0, exclude_users))
