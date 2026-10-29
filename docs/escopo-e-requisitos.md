@@ -158,7 +158,7 @@ Para o piloto acadêmico, os MP4 podem ficar em diretório persistente na EC2, c
 
 O limite de duração é de até 90 segundos e só deve ser apresentado como garantido após implementação de validação real. Usar vídeos previamente preparados na demonstração, respeitando os limites técnicos abaixo.
 
-**Refinamento técnico T01 e revisão D004 (v1.2):** adotados arquivo de até 50 MiB, requisição de até 51 MiB e duração de até 90 segundos, com validação ffprobe e armazenamento privado persistente na EC2. Esses controles de mídia ainda serão implementados. Para RF01, planejar sessão opaca persistente no MongoDB: usuários comuns com 30 dias desde a última renovação válida, limitados a 90 dias desde o login; administradores com 12 horas absolutas, sem extensão automática. Preservar revogação no logout, CSRF e recuperação da identidade pelo React ao reabrir o site. São parâmetros iniciais do piloto, não exigências acadêmicas. O código atual ainda aplica 12 horas a todas as sessões autenticadas; a nova política permanece pendente de implementação e integração. Detalhes e justificativas em [arquitetura](arquitetura.md).
+**Refinamento técnico T01 e revisão D004 (v1.2):** adotados arquivo de até 50 MiB, requisição de até 51 MiB e duração de até 90 segundos, com validação ffprobe e armazenamento privado persistente na EC2. Esses controles de mídia foram implementados e verificados em 29/10/2026 com `ffprobe` real. Para RF01, planejar sessão opaca persistente no MongoDB: usuários comuns com 30 dias desde a última renovação válida, limitados a 90 dias desde o login; administradores com 12 horas absolutas, sem extensão automática. Preservar revogação no logout, CSRF e recuperação da identidade pelo React ao reabrir o site. São parâmetros iniciais do piloto, não exigências acadêmicas. O código atual ainda aplica 12 horas a todas as sessões autenticadas; a nova política permanece pendente de implementação e integração. Detalhes e justificativas em [arquitetura](arquitetura.md).
 
 A revisão refina RF01 sem acrescentar login Google/Apple, tela de dispositivos, encerramento remoto de outras sessões, MFA, passkeys, confirmação adicional específica para moderação ou detecção comportamental ao MVP. Suporte a 5.000 usuários simultâneos não é critério de aceite desta entrega.
 
@@ -277,6 +277,19 @@ Concluir cada funcionalidade com backend, interface e verificação antes de ini
 - [ ] CA13 — Segredos estão fora do Git; configuração necessária é entregue pelo canal solicitado.
 - [ ] CA14 — Tema e recorte estão validados pelo professor.
 - [ ] CA15 — Demonstração usa contas e conteúdo preparados, e contribuições individuais estão identificáveis.
+
+**Situação em 29/10/2026.** Nenhum item está marcado porque cada critério só se cumpre com o React consumindo a API (e, nos CA12–CA15, com a AWS e o professor). Evidência do backend por critério:
+
+| Critério | Backend | Falta |
+| --- | --- | --- |
+| CA01, CA07 | Cadastro, login (e-mail ou usuário), logout, JWT em cookie e papel lido do banco; testes automatizados e fluxo ao vivo no Atlas | Telas React |
+| CA02, CA03 | Publicação com `ffprobe`, fila de moderação, aprovação com motivo e conflito 409, exclusão; verificados ao vivo | Telas de publicar, acompanhar e moderar |
+| CA04, CA05 | Feed por categoria com cursor e mídia com `Range` (206); verificados ao vivo | Feed com `<video>`, controles e alternativa ao autoplay |
+| CA06, CA08 | Reação, comentário, denúncia, resolução e bloqueio; reação, comentário e denúncia verificados ao vivo | Telas e conferência da persistência após recarregar |
+| CA09, CA10 | `GET /bible/passages` com bible-api.com real (João 3:16, Salmos 23:1) e erros tratados | Versículo exibido no vídeo e queda tolerada na tela |
+| CA11 | 633 testes passando (3 falham só no Windows por limite de nome de parâmetro, sem relação com a lógica) | Casos de erro do React |
+| CA12, CA13 | `.env` fora do Git; nenhum recurso AWS criado | Deploy na EC2 e link da API no README |
+| CA14, CA15 | Não é código | Validação do professor (RA06) e roteiro da demonstração |
 
 ## 14. Pendências de decisão
 

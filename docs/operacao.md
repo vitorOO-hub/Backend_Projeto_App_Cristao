@@ -2,7 +2,7 @@
 
 ## Estado da entrega
 
-Implementados `GET /api/health` e `GET /api/bible/passages`. Também implementados GET `/api/auth/csrf`, POST `/api/users`, POST `/api/auth/login`, POST `/api/auth/logout`, GET/PATCH `/api/me` e GET `/api/users/{id}`; React e prova no Atlas permanecem pendentes. Nenhum recurso AWS foi criado e não existe URL pública de API nesta entrega.
+Implementados `GET /api/health` e `GET /api/bible/passages`. Também implementados GET `/api/auth/csrf`, POST `/api/users`, POST `/api/auth/login`, POST `/api/auth/logout`, GET/PATCH `/api/me` e GET `/api/users/{id}`; também as rotas de vídeo, interações e moderação. A prova no Atlas de desenvolvimento e com `ffprobe` real foi feita em 29/10/2026; o consumo pelo React segue pendente. Nenhum recurso AWS foi criado e não existe URL pública de API nesta entrega.
 
 **Planejamento revisado em 24/10/2026:** sessões comuns terão renovação controlada, janela de 30 dias e limite absoluto de 90 dias; administradores continuarão com 12 horas absolutas. Essa revisão ainda não está no código. As instruções executáveis abaixo usam a configuração atual, incluindo os controles de acesso do [contrato API v0.6](api.md). Ver [arquitetura](arquitetura.md).
 
@@ -49,7 +49,7 @@ Os testes são offline e não escrevem em banco real. A prova real é opt-in, us
 
 `APP_ENV`, `MONGODB_URI`, `MONGODB_DATABASE`, `BIBLE_API_BASE_URL` (fixa em `https://bible-api.com`), `BIBLE_CONNECT_TIMEOUT_SECONDS`, `BIBLE_READ_TIMEOUT_SECONDS`, `BIBLE_CACHE_TTL_SECONDS` e `MAX_REQUEST_BYTES` são lidas pela factory. Sem URI e fora de produção, o cache usa SQLite em `instance`.
 
-Tradução é restrita a `almeida`; não aceitar provedor/URL enviados na query. `APP_ORIGIN`, `SESSION_COOKIE_SECURE` e `ANONYMOUS_SESSION_TTL_SECONDS` são consumidos na autenticação. A sessão anônima tem duração absoluta fixa de 1800 segundos. `SESSION_TTL_SECONDS` já é consumida pelo login e deve permanecer em 43200 até implementar a revisão D004: outra duração é rejeitada na inicialização. `UPLOAD_*`, `FFPROBE_PATH` e `MAX_VIDEO_*` permanecem contratos futuros.
+Tradução é restrita a `almeida`; não aceitar provedor/URL enviados na query. `APP_ORIGIN`, `SESSION_COOKIE_SECURE` e `ANONYMOUS_SESSION_TTL_SECONDS` são consumidos na autenticação. A sessão anônima tem duração absoluta fixa de 1800 segundos. `SESSION_TTL_SECONDS` já é consumida pelo login e deve permanecer em 43200 até implementar a revisão D004: outra duração é rejeitada na inicialização. `UPLOAD_DIR` (padrão `instance/uploads`), `FFPROBE_PATH` (padrão `ffprobe`) e `JWT_SECRET` são consumidas pelas rotas de vídeo e pelo cookie de sessão; ver `.env.example`.
 
 `TRUSTED_PROXY_IPS` configura a confiança no proxy e é obrigatória em produção. `MONGODB_SETUP_URI` é lida somente nos comandos de inicialização em produção; não pertence ao ambiente do serviço web. Seus valores reais ficam fora do Git.
 

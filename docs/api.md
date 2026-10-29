@@ -1,6 +1,6 @@
 # Contrato da API — v0.7
 
-**Data:** 24/10/2026. **Estado:** `/api/health` e `/api/bible/passages` implementadas e verificadas na T03. Autenticação implementada com verificação local isolada: GET `/api/auth/csrf`, POST `/api/users`, POST `/api/auth/login`, POST `/api/auth/logout`, GET/PATCH `/api/me` e GET `/api/users/{id}`; integração Atlas e React pendentes. O código mantém sessões autenticadas de 12 horas. A política persistente e a rota de renovação desta versão são planejadas, ainda não implementadas. As rotas de vídeo, feed, mídia, reações, comentários, denúncias, bloqueios e moderação também estão implementadas (ver "Estado implementado das rotas de vídeo, interações e moderação"). Referência: [arquitetura](arquitetura.md) e RF01–RF13 do [escopo](escopo-e-requisitos.md).
+**Data:** 24/10/2026. **Estado:** `/api/health` e `/api/bible/passages` implementadas e verificadas na T03. Autenticação implementada com verificação local isolada: GET `/api/auth/csrf`, POST `/api/users`, POST `/api/auth/login`, POST `/api/auth/logout`, GET/PATCH `/api/me` e GET `/api/users/{id}`; integração com o Atlas verificada em 29/10/2026 (fluxo completo com `ffprobe` real, contra o banco de desenvolvimento); consumo pelo React pendente. O código mantém sessões autenticadas de 12 horas. A política persistente e a rota `POST /auth/session/renew` (D004) são planejadas, ainda não implementadas. As rotas de vídeo, feed, mídia, reações, comentários, denúncias, bloqueios e moderação também estão implementadas (ver "Estado implementado das rotas de vídeo, interações e moderação"). Referência: [arquitetura](arquitetura.md) e RF01–RF13 do [escopo](escopo-e-requisitos.md).
 
 ## Convenções
 
@@ -166,7 +166,7 @@ Todas as rotas das seções 2 a 5 estão implementadas (`app/video_api.py`, `app
 - **Comentários:** autores bloqueados pelo consultante saem da lista e da contagem antes da paginação. Apagar o próprio comentário é permitido mesmo depois de o vídeo deixar de ser público.
 - **Denúncias:** uma denúncia aberta por usuário e vídeo; repetir retorna 409 `already_reported`. Denunciar não altera o vídeo.
 - **Moderação:** exige papel `admin` lido do banco a cada requisição (403 para usuário comum). `PATCH /moderation/videos/{id}` exige exatamente `status` (`approved` ou `rejected`), `reason` e `expected_updated_at` (instante ISO 8601 com fuso, comparado em milissegundos); 409 `conflict` se o vídeo mudou ou a transição não é permitida, 404 se não existe. Resolver uma denúncia já resolvida retorna 409.
-- **Administrador:** só pode ser definido no servidor, com `flask --app app create-admin <e-mail>` sobre uma conta já cadastrada. Nenhuma rota HTTP concede o papel; o cadastro e o `PATCH /me` rejeitam `role`.
+- **Administrador:** só pode ser definido no servidor, com `flask --app app create-admin <e-mail>` (ou `set-role <e-mail> admin|user`, que também rebaixa) sobre uma conta já cadastrada. Nenhuma rota HTTP concede o papel; o cadastro e o `PATCH /me` rejeitam `role`.
 
 ## Entrega da primeira fatia (T04)
 

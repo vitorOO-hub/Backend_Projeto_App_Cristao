@@ -3,7 +3,7 @@ Backend do projeto agil e programação eficaz do app cristao
 
 ## Execução — entrega T03
 
-Backend Flask com application factory, `GET /api/health` e `GET /api/bible/passages`. Integração real com bible-api.com em Almeida verificada para João 3:16 e Salmos 23:1. Cadastro, login, logout e perfil; publicação, feed e entrega de vídeo; reações, comentários, denúncias e bloqueios; e moderação estão implementados e testados (ver [contrato da API](docs/api.md)). Publicar vídeo exige `ffprobe` instalado (veja [operação](docs/operacao.md)). Ainda faltam o consumo pelo React, o deploy na EC2 e a verificação do `ffprobe` real.
+Backend Flask com application factory, `GET /api/health` e `GET /api/bible/passages`. Integração real com bible-api.com em Almeida verificada para João 3:16 e Salmos 23:1. Cadastro, login, logout e perfil; publicação, feed e entrega de vídeo; reações, comentários, denúncias e bloqueios; e moderação estão implementados e testados (ver [contrato da API](docs/api.md)). Publicar vídeo exige `ffprobe` instalado (veja [operação](docs/operacao.md)). O fluxo completo (publicar, moderar, listar, reproduzir, reagir, comentar e denunciar) foi verificado em 29/10/2026 contra o Atlas de desenvolvimento e com o `ffprobe` real. Ainda faltam o consumo pelo React, o deploy na EC2 e a rota opcional de renovação de sessão (D004).
 
 Requer Python 3.12. No diretório deste repositório:
 
