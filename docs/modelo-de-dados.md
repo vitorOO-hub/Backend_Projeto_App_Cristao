@@ -71,6 +71,7 @@
 | `comments` | `_id`, `video_id`, `author_id`, `text`, `created_at` | Implementada (`MongoCommentRepository`) |
 | `reports` | `_id`, `video_id`, `reporter_id`, `reason`, `status` (`open`/`resolved`), `resolution_note`, `resolved_by`, `created_at`, `resolved_at` | Implementada (`MongoReportRepository`) |
 | `blocks` | `_id`, `user_id`, `blocked_user_id`, `created_at` | Implementada (`MongoBlockRepository`) |
+| `follows` | `_id`, `follower_id`, `followee_id`, `created_at` | Implementada (`MongoFollowRepository`); seguir a si mesmo é recusado na rota (400) |
 
 `resolved_by` (administrador que resolveu a denúncia) não consta na tabela `Report` do contrato público e fica somente no banco.
 
@@ -86,11 +87,15 @@ Declarados em `app/db.py` e criados por `flask --app app init-db`. As coleções
 | `videos_purge` | `deleted_at` (parcial: só tombstones) | Localizar o que falta limpar. |
 | `reactions_user_video_unique` | `user_id, video_id` único | Uma reação por usuário e vídeo, inclusive em concorrência. |
 | `reactions_video` | `video_id` | Contagem por vídeo. |
+| `reactions_user` | `user_id, created_at↓, _id↓` | `GET /me/reacted-videos` e o contador `reacted`. |
 | `comments_video` | `video_id, created_at, _id` | Lista de comentários com cursor estável. |
 | `reports_queue` | `status, created_at, _id` | Fila de denúncias. |
 | `reports_open_unique` | `video_id, reporter_id` único, parcial `status = open` | Uma denúncia aberta por usuário e vídeo; duplicata deve responder 409. |
 | `blocks_pair_unique` | `user_id, blocked_user_id` único | Bloqueio repetido não duplica. |
 | `blocks_list` | `user_id, created_at↓, _id↓` | `GET /me/blocks`. |
+| `follows_pair_unique` | `follower_id, followee_id` único | Um seguidor por par, inclusive em concorrência. |
+| `follows_followers` | `followee_id, created_at↓, _id↓` | `GET /me/followers` e o contador de seguidores. |
+| `follows_following` | `follower_id, created_at↓, _id↓` | `GET /me/following` e o contador de seguindo. |
 
 Não há índice TTL em dados permanentes. Os filtros dos índices parciais usam apenas operadores aceitos pelo MongoDB (`$type`, igualdade de texto).
 
