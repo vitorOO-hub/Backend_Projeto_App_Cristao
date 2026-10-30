@@ -24,7 +24,7 @@ def make(cls, name):
 
 @pytest.fixture
 def reactions():
-    return make(MongoReactionRepository, 'reactions')
+    return MongoReactionRepository({'reactions': MagicMock(), 'videos': MagicMock()})
 
 
 @pytest.fixture

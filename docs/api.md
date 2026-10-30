@@ -41,10 +41,20 @@ Coleções internas não definem diretamente o JSON público. Autor e administra
 | PATCH `/me` | `name` e/ou `bio` | Autenticado + CSRF | 200, UserSelf atualizado |
 | GET `/users/{id}` | Sem corpo | Público | 200, UserPublic |
 | GET `/me/videos` | `status` opcional, `cursor`, `limit` | Autenticado | 200, lista VideoOwn |
+| GET `/me/profile` | Sem parâmetros | Autenticado | 200, `data.user` (UserSelf) e `data.counts` (`videos`, `amens_received`, `reacted`, `followers`, `following`) |
+| GET `/me/reacted-videos` | `cursor`, `limit` | Autenticado | 200, lista Video que o usuário reagiu com "Amém", reação mais recente primeiro |
+| GET `/me/followers` | `cursor`, `limit` | Autenticado | 200, lista UserPublic de quem segue o usuário, mais recente primeiro |
+| GET `/me/following` | `cursor`, `limit` | Autenticado | 200, lista UserPublic de quem o usuário segue, mais recente primeiro |
+| PUT `/users/{id}/follow` | Sem corpo | Autenticado + CSRF | 200, `data.following=true`; repetir não duplica; a si mesmo: 400; inexistente: 404 |
+| DELETE `/users/{id}/follow` | Sem corpo | Autenticado + CSRF | 204, inclusive se não seguia |
 
 Validações: nome 2–80 caracteres após trim; bio até 300; e-mail obrigatório, até 254 caracteres, normalizado com trim/lowercase e índice único; senha entre 12 e 128 caracteres, sem trim ou truncamento. Senha deve ser tratada como string; e-mail não aceita objetos ou operadores de consulta. Nome de usuário opcional no cadastro: 3–30 caracteres entre `a-z`, `0-9`, `.` e `_`, sem começar ou terminar com ponto nem `..`, normalizado com trim/lowercase e índice único parcial (contas antigas sem o campo ficam com `username` null). E-mail duplicado: 409 `email_conflict`; usuário duplicado: 409 `username_conflict`. Login: com `@` busca por e-mail, sem `@` por nome de usuário; o limite por IP+identificador conta pela conta quando ela existe, então alternar e-mail e usuário não amplia as tentativas. Cadastro não aceita `role`; falha de login retorna mensagem genérica e 401. Editar e-mail/senha não faz parte deste contrato.
 
 Fluxo React planejado: obter CSRF → cadastrar → fazer login → atualizar token em memória → GET `/me`. Ao reabrir a página, consultar `/me` com o cookie preservado antes de mostrar login; 200 recupera a identidade, 401 indica ausência de sessão válida e erro de rede/503 apresenta indisponibilidade com nova tentativa. Obter CSRF para alterações e renovação, coordenando as chamadas entre abas. Logout limpa estado React após resposta; erro de rede não comprova revogação, portanto informar falha e permitir tentar novamente. Não guardar senha nem identificador de sessão no localStorage.
+
+### Perfil do usuário logado
+
+Nenhuma rota de perfil recebe o id do usuário: ele vem sempre da sessão, e qualquer parâmetro de consulta desconhecido (por exemplo `user_id`) devolve 400. Contadores: `videos` conta só os aprovados e não excluídos; `amens_received` soma as reações "Amém" nesses vídeos; `reacted` é quantas reações o usuário deu; `followers` e `following` ignoram quem o usuário bloqueou, igual às listas. `GET /me/reacted-videos` mostra só vídeos aprovados e de autores não bloqueados; a página pode vir com menos itens que `limit` quando um vídeo reagido deixou de ser visível, então use `has_more` para saber se há mais. Seguir e deixar de seguir têm limite de 30 por minuto.
 
 ### Estado implementado da autenticação
 

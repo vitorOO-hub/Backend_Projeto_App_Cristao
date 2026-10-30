@@ -22,6 +22,8 @@ class VideoRepository(Protocol):
     def list_approved(self, *, category=None, author_id=None, exclude_authors=(),
                       limit=DEFAULT_PAGE_SIZE, after=None): ...
     def list_by_author(self, author_id, *, status=None, limit=DEFAULT_PAGE_SIZE, after=None): ...
+    def find_approved_by_ids(self, video_ids, exclude_authors=()): ...
+    def count_approved_by_author(self, author_id): ...
     def list_for_review(self, *, status='pending', limit=DEFAULT_PAGE_SIZE, after=None): ...
     def update_metadata(self, video_id, author_id, fields, at): ...
     def decide(self, video_id, *, expected_updated_at, status, reason, admin_id, at): ...
@@ -35,6 +37,7 @@ class UnavailableVideoRepository:
         raise DataUnavailable()
 
     insert = find_by_id = list_approved = list_by_author = list_for_review = _unavailable
+    find_approved_by_ids = count_approved_by_author = _unavailable
     update_metadata = decide = soft_delete = list_pending_purge = mark_purged = _unavailable
 
 
@@ -135,6 +138,25 @@ class MongoVideoRepository:
         if status is not None:
             query['status'] = check_status(status)
         return self.page(query, NEWEST_FIRST, limit, after)
+
+    def find_approved_by_ids(self, video_ids, exclude_authors=()):
+        """One page worth of videos by id, with the same visibility as the public feed."""
+        ids = [object_id(value) for value in video_ids]
+        if len(ids) > MAX_PAGE_SIZE:
+            raise ValueError('Lote de identificadores grande demais.')
+        if not ids:
+            return []
+        query = {**approved_query(exclude_authors=exclude_authors), '_id': {'$in': ids}}
+        try:
+            return list(self.videos.find(query))
+        except PyMongoError:
+            raise DataUnavailable() from None
+
+    def count_approved_by_author(self, author_id):
+        try:
+            return self.videos.count_documents(approved_query(author_id=author_id))
+        except PyMongoError:
+            raise DataUnavailable() from None
 
     def list_for_review(self, *, status='pending', limit=DEFAULT_PAGE_SIZE, after=None):
         """Moderation queue, oldest first so waiting items are not starved."""

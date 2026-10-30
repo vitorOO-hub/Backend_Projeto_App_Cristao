@@ -178,6 +178,8 @@ def protect_requests():
         'videos.create': ('upload', 10, 900),
         'social.create_comment': ('comment', 30, 60),
         'social.report': ('report', 10, 900),
+        'profile.follow': ('follow', 30, 60),
+        'profile.unfollow': ('follow', 30, 60),
     }
     policy = policies.get(request.endpoint)
     if policy:

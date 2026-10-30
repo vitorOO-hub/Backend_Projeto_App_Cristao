@@ -4,7 +4,7 @@ from pymongo.errors import DuplicateKeyError, PyMongoError
 
 from app.constants import DEFAULT_PAGE_SIZE, REPORT_STATUSES
 from app.errors import DataUnavailable, ReportConflict
-from app.video_repository import NEWEST_FIRST, OLDEST_FIRST, fetch_page, object_id
+from app.video_repository import NEWEST_FIRST, OLDEST_FIRST, approved_query, fetch_page, object_id
 from app.videos import to_millis
 
 MAX_BATCH = 100
@@ -44,6 +44,7 @@ class UnavailableRepository:
 
 class UnavailableReactionRepository(UnavailableRepository):
     add = remove = count_for = reacted_by = delete_for_video = UnavailableRepository._unavailable
+    list_by_user = count_by_user = count_received = UnavailableRepository._unavailable
 
 
 class UnavailableCommentRepository(UnavailableRepository):
@@ -55,6 +56,11 @@ class UnavailableReportRepository(UnavailableRepository):
     insert = find_by_id = list_by_status = resolve = UnavailableRepository._unavailable
 
 
+class UnavailableFollowRepository(UnavailableRepository):
+    add = remove = list_followers = list_following = UnavailableRepository._unavailable
+    count_followers = count_following = UnavailableRepository._unavailable
+
+
 class UnavailableBlockRepository(UnavailableRepository):
     add = remove = list_for = blocked_ids = exists = UnavailableRepository._unavailable
 
@@ -62,6 +68,7 @@ class UnavailableBlockRepository(UnavailableRepository):
 class MongoReactionRepository:
     def __init__(self, database):
         self.reactions = database['reactions']
+        self.videos = database['videos']
 
     def add(self, user_id, video_id, at):
         """Idempotent: repeating the reaction (or racing with itself) never duplicates it."""
@@ -95,6 +102,33 @@ class MongoReactionRepository:
             return {row['video_id'] for row in rows}
         except PyMongoError:
             raise DataUnavailable() from None
+
+    def list_by_user(self, user_id, *, limit=DEFAULT_PAGE_SIZE, after=None):
+        """The user's reactions, newest first (profile "Curtidos"); video visibility is the caller's job."""
+        return fetch_page(self.reactions, {'user_id': object_id(user_id)}, NEWEST_FIRST, limit, after)
+
+    def count_by_user(self, user_id):
+        object_id(user_id)
+        try:
+            return self.reactions.count_documents({'user_id': user_id})
+        except PyMongoError:
+            raise DataUnavailable() from None
+
+    def count_received(self, author_id):
+        """Reactions on the author's approved, undeleted videos, in one aggregation."""
+        pipeline = [
+            {'$match': approved_query(author_id=object_id(author_id))},
+            {'$lookup': {'from': 'reactions', 'let': {'video': '$_id'}, 'as': 'received',
+                         'pipeline': [{'$match': {'$expr': {'$eq': ['$video_id', '$$video']}}},
+                                      {'$count': 'total'}]}},
+            {'$group': {'_id': None,
+                        'total': {'$sum': {'$ifNull': [{'$arrayElemAt': ['$received.total', 0]}, 0]}}}},
+        ]
+        try:
+            rows = list(self.videos.aggregate(pipeline))
+        except PyMongoError:
+            raise DataUnavailable() from None
+        return rows[0]['total'] if rows else 0
 
     def delete_for_video(self, video_id):
         """Part of the purge of a deleted video; safe to repeat."""
@@ -187,6 +221,58 @@ class MongoReportRepository:
                 return_document=ReturnDocument.AFTER)
         except PyMongoError:
             raise DataUnavailable() from None
+
+
+class MongoFollowRepository:
+    def __init__(self, database):
+        self.follows = database['follows']
+
+    def add(self, follower_id, followee_id, at):
+        """Idempotent, like reactions and blocks; the unique pair index stops a concurrent duplicate."""
+        object_id(follower_id), object_id(followee_id)
+        try:
+            self.follows.update_one({'follower_id': follower_id, 'followee_id': followee_id},
+                                    {'$setOnInsert': {'created_at': to_millis(at)}}, upsert=True)
+        except DuplicateKeyError:
+            pass
+        except PyMongoError:
+            raise DataUnavailable() from None
+
+    def remove(self, follower_id, followee_id):
+        object_id(follower_id), object_id(followee_id)
+        try:
+            self.follows.delete_one({'follower_id': follower_id, 'followee_id': followee_id})
+        except PyMongoError:
+            raise DataUnavailable() from None
+
+    @staticmethod
+    def side(user_field, user_id, other_field, exclude_users):
+        query = {user_field: object_id(user_id)}
+        excluded = object_ids(exclude_users, MAX_EXCLUDED)
+        if excluded:
+            query[other_field] = {'$nin': excluded}
+        return query
+
+    def list_followers(self, user_id, *, exclude_users=(), limit=DEFAULT_PAGE_SIZE, after=None):
+        """Who follows `user_id`, newest first; `exclude_users` (e.g. blocked ones) go before the limit."""
+        query = self.side('followee_id', user_id, 'follower_id', exclude_users)
+        return fetch_page(self.follows, query, NEWEST_FIRST, limit, after)
+
+    def list_following(self, user_id, *, exclude_users=(), limit=DEFAULT_PAGE_SIZE, after=None):
+        query = self.side('follower_id', user_id, 'followee_id', exclude_users)
+        return fetch_page(self.follows, query, NEWEST_FIRST, limit, after)
+
+    def count(self, query):
+        try:
+            return self.follows.count_documents(query)
+        except PyMongoError:
+            raise DataUnavailable() from None
+
+    def count_followers(self, user_id, exclude_users=()):
+        return self.count(self.side('followee_id', user_id, 'follower_id', exclude_users))
+
+    def count_following(self, user_id, exclude_users=()):
+        return self.count(self.side('follower_id', user_id, 'followee_id', exclude_users))
 
 
 class MongoBlockRepository:
