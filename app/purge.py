@@ -17,3 +17,11 @@ def purge_pending(limit=50):
     for video in videos:
         purge_video(video)
     return len(videos)
+
+
+def recheck_deleted(limit=50, after=None):
+    """Opt-in maintenance only: repeat cleanup of a bounded page of deleted videos."""
+    videos, more = ext('video_repository').list_deleted_for_recheck(limit=limit, after=after)
+    for video in videos:
+        purge_video(video)
+    return len(videos), str(videos[-1]['_id']) if more and videos else None

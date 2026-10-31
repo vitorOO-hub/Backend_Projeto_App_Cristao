@@ -15,8 +15,11 @@ from app.db import ensure_indexes
 from app.errors import ApiError, CacheUnavailable, AuthUnavailable, DataUnavailable
 from app.auth import auth, configure_auth
 from app.media import probe_video
+from app.interactions import MongoInteractions, UnavailableInteractions
 from app.moderation_api import moderation
-from app.purge import purge_pending
+from app.purge import purge_pending, recheck_deleted
+from app.orphans import MongoOrphanRepository, UnavailableOrphanRepository
+from app.access import parse_id
 from app.profile_api import profile
 from app.social_api import social
 from app.storage import LocalStorage
@@ -87,6 +90,12 @@ def create_app(config=None):
     app.extensions['rate_limits'] = app.config.get('RATE_LIMITS') or (
         MongoRateLimits(mongo[app.config['MONGODB_DATABASE']]['rate_limits']) if mongo is not None
         else SQLiteRateLimits(Path(app.config['CACHE_SQLITE_PATH']).with_name('rate-limits.sqlite3')))
+    app.extensions['interactions_service'] = app.config.get('INTERACTIONS_SERVICE') or (
+        MongoInteractions(mongo[app.config['MONGODB_DATABASE']]) if mongo is not None
+        else UnavailableInteractions())
+    app.extensions['orphan_repository'] = app.config.get('ORPHAN_REPOSITORY') or (
+        MongoOrphanRepository(mongo[app.config['MONGODB_DATABASE']]) if mongo is not None
+        else UnavailableOrphanRepository())
     app.before_request(protect_requests)
     app.register_blueprint(auth)
     app.register_blueprint(videos)
@@ -208,13 +217,42 @@ def create_app(config=None):
         click.echo("Conta promovida a administrador. Ela precisa entrar de novo para usar o painel.")
 
     @app.cli.command("purge-videos")
-    def purge_videos():
+    @click.option('--recheck', is_flag=True, help='Rever também vídeos excluídos já marcados como limpos.')
+    @click.option('--limit', type=click.IntRange(1, 100), default=50, show_default=True)
+    @click.option('--after', help='Cursor hexadecimal de continuação da revisão explícita.')
+    def purge_videos(recheck, limit, after):
         """Finish the physical removal of deleted videos (file, reactions and comments)."""
         try:
-            done = purge_pending()
-        except (DataUnavailable, OSError):
+            if after is not None and not recheck:
+                raise click.ClickException('Use --after somente com --recheck.')
+            done, cursor = (recheck_deleted(limit, parse_id(after) if after else None) if recheck
+                            else (purge_pending(limit), None))
+        except (DataUnavailable, OSError, ApiError):
             raise click.ClickException("Não foi possível concluir a limpeza; tente novamente.") from None
         click.echo(f"Vídeos limpos: {done}.")
+        if cursor:
+            click.echo(f'Próximo cursor: {cursor}')
+
+    @app.cli.command('audit-orphans')
+    @click.option('--collection', 'collection_name', type=click.Choice(['comments', 'reactions']),
+                  help='Diagnosticar somente esta coleção; necessário para continuar com --after.')
+    @click.option('--limit', type=click.IntRange(1, 100), default=50, show_default=True)
+    @click.option('--after', help='Listar relações com _id maior que este cursor hexadecimal.')
+    def audit_orphans(collection_name, limit, after):
+        """Diagnose orphan comments/reactions without changing files or records."""
+        try:
+            if after is not None and collection_name is None:
+                raise click.ClickException('Use --collection ao continuar um diagnóstico com --after.')
+            cursor = parse_id(after) if after else None
+            for name in ([collection_name] if collection_name else ('comments', 'reactions')):
+                rows, more = app.extensions['orphan_repository'].list_for(name, limit=limit, after=cursor)
+                click.echo(f'{name}: {len(rows)} órfãos nesta página.')
+                for row in rows:
+                    click.echo(f'  id={row["_id"]} video_id={row["video_id"]}')
+                if more:
+                    click.echo(f'  Próximo cursor ({name}): {rows[-1]["_id"]}')
+        except (DataUnavailable, ApiError):
+            raise click.ClickException('Não foi possível concluir o diagnóstico.') from None
 
     @app.cli.command("init-db")
     def init_db():

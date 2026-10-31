@@ -1,12 +1,23 @@
 """In-memory stand-ins for the Mongo repositories, honouring the same contracts."""
 from copy import deepcopy
+from functools import wraps
+from threading import RLock
 
 from bson import ObjectId
 
 from app.errors import DataUnavailable, ReportConflict
 from app.videos import EMPTY_REVIEW, to_millis
+from app.interactions import unavailable_video
 
 DECISION_FROM = {'approved': ('pending', 'rejected'), 'rejected': ('pending', 'approved')}
+
+
+def lifecycle_write(operation):
+    @wraps(operation)
+    def guarded(self, *args, **kwargs):
+        with self.lifecycle_lock:
+            return operation(self, *args, **kwargs)
+    return guarded
 
 
 def page(items, newest_first, limit, after):
@@ -32,6 +43,7 @@ class FakeVideoRepository(Switch):
     def __init__(self):
         super().__init__()
         self.videos = {}
+        self.lifecycle_lock = RLock()
 
     def insert(self, video):
         self.check()
@@ -72,6 +84,7 @@ class FakeVideoRepository(Switch):
         self.check()
         return page([v for v in self.live() if v['status'] == status], False, limit, after)
 
+    @lifecycle_write
     def update_metadata(self, video_id, author_id, fields, at):
         self.check()
         video = self.videos.get(video_id)
@@ -83,6 +96,7 @@ class FakeVideoRepository(Switch):
         video['updated_at'] = to_millis(at)
         return deepcopy(video)
 
+    @lifecycle_write
     def decide(self, video_id, *, expected_updated_at, status, reason, admin_id, at):
         self.check()
         video = self.videos.get(video_id)
@@ -93,6 +107,7 @@ class FakeVideoRepository(Switch):
                      review={'reason': reason, 'decided_by': admin_id, 'decided_at': to_millis(at)})
         return deepcopy(video)
 
+    @lifecycle_write
     def soft_delete(self, video_id, author_id, at):
         self.check()
         video = self.videos.get(video_id)
@@ -113,6 +128,66 @@ class FakeVideoRepository(Switch):
             return False
         video['purged_at'] = to_millis(at)
         return True
+
+    def list_deleted_for_recheck(self, *, limit=50, after=None):
+        self.check()
+        rows = sorted((v for v in self.videos.values() if v['deleted_at'] is not None
+                       and (after is None or v['_id'] > after)), key=lambda v: v['_id'])
+        return deepcopy(rows[:limit]), len(rows) > limit
+
+
+class FakeInteractions:
+    """Fixture-only atomic writes sharing the lifecycle lock with edits and deletion."""
+    def __init__(self, videos, reactions, comments, reports):
+        self.videos, self.reactions, self.comments, self.reports = videos, reactions, comments, reports
+
+    def _write(self, video_id, operation):
+        with self.videos.lifecycle_lock:
+            self.videos.check()
+            video = self.videos.videos.get(video_id)
+            if video is None or video['deleted_at'] is not None or video['status'] != 'approved':
+                raise unavailable_video()
+            previous = (deepcopy(video), deepcopy(self.reactions.pairs),
+                        deepcopy(self.comments.comments), deepcopy(self.reports.reports))
+            try:
+                video['interaction_version'] = video.get('interaction_version', 0) + 1
+                return operation()
+            except BaseException:
+                self.videos.videos[video_id], self.reactions.pairs, self.comments.comments, self.reports.reports = previous
+                raise
+
+    def react(self, user_id, video_id, at):
+        return self._write(video_id, lambda: self.reactions.add(user_id, video_id, at))
+
+    def unreact(self, user_id, video_id):
+        return self._write(video_id, lambda: self.reactions.remove(user_id, video_id))
+
+    def comment(self, document):
+        return self._write(document['video_id'], lambda: self.comments.insert(document))
+
+    def report(self, document):
+        return self._write(document['video_id'], lambda: self.reports.insert(document))
+
+
+class FakeOrphanRepository(Switch):
+    def __init__(self, videos, reactions, comments):
+        super().__init__()
+        self.videos, self.reactions, self.comments = videos, reactions, comments
+
+    def list_for(self, collection, *, limit=50, after=None):
+        self.check()
+        self.videos.check()
+        if collection == 'comments':
+            self.comments.check()
+            rows = self.comments.comments.values()
+        else:
+            self.reactions.check()
+            rows = [{'_id': video_id, 'video_id': video_id} for _, video_id in self.reactions.pairs]
+        rows = [row for row in rows if (after is None or row['_id'] > after)
+                and (row['video_id'] not in self.videos.videos
+                     or self.videos.videos[row['video_id']]['deleted_at'] is not None)]
+        rows = sorted(rows, key=lambda row: row['_id'])
+        return [{'_id': row['_id'], 'video_id': row['video_id']} for row in rows[:limit]], len(rows) > limit
 
 
 class FakeReactionRepository(Switch):

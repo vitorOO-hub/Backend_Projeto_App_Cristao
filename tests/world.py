@@ -9,7 +9,8 @@ from app.auth import digest, issue_token
 from app.storage import LocalStorage
 from app.videos import new_video
 from conftest import FakeAuthRepository
-from fakes import (FakeBlockRepository, FakeCommentRepository, FakeFollowRepository,
+from fakes import (FakeBlockRepository, FakeCommentRepository, FakeFollowRepository, FakeInteractions,
+                   FakeOrphanRepository,
                    FakeReactionRepository, FakeReportRepository, FakeVideoRepository)
 
 MP4_BYTES = b'\x00\x00\x00\x18ftypmp42' + b'0' * 200
@@ -64,6 +65,8 @@ class World:
         self.blocks = FakeBlockRepository()
         self.follows = FakeFollowRepository()
         self.reactions.videos = self.videos
+        self.interactions = FakeInteractions(self.videos, self.reactions, self.comments, self.reports)
+        self.orphans = FakeOrphanRepository(self.videos, self.reactions, self.comments)
         self.storage = LocalStorage(tmp_path / 'uploads')
         self.time = [datetime(2026, 10, 27, 12, 0, tzinfo=timezone.utc)]
         self.probe_calls, self.probe_result, self.probe_error = [], dict(PROBE_RESULT), None
@@ -73,6 +76,7 @@ class World:
             'AUTH_REPOSITORY': self.auth, 'VIDEO_REPOSITORY': self.videos,
             'REACTION_REPOSITORY': self.reactions, 'COMMENT_REPOSITORY': self.comments,
             'REPORT_REPOSITORY': self.reports, 'BLOCK_REPOSITORY': self.blocks, 'FOLLOW_REPOSITORY': self.follows,
+            'INTERACTIONS_SERVICE': self.interactions, 'ORPHAN_REPOSITORY': self.orphans,
             'STORAGE': self.storage, 'MEDIA_PROBE': self.probe})
         self.serial = 0
 

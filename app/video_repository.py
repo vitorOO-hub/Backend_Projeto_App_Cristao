@@ -29,6 +29,7 @@ class VideoRepository(Protocol):
     def decide(self, video_id, *, expected_updated_at, status, reason, admin_id, at): ...
     def soft_delete(self, video_id, author_id, at): ...
     def list_pending_purge(self, limit=50): ...
+    def list_deleted_for_recheck(self, *, limit=50, after=None): ...
     def mark_purged(self, video_id, at): ...
 
 
@@ -39,6 +40,7 @@ class UnavailableVideoRepository:
     insert = find_by_id = list_approved = list_by_author = list_for_review = _unavailable
     find_approved_by_ids = count_approved_by_author = _unavailable
     update_metadata = decide = soft_delete = list_pending_purge = mark_purged = _unavailable
+    list_deleted_for_recheck = _unavailable
 
 
 def object_id(value):
@@ -229,3 +231,15 @@ class MongoVideoRepository:
         except PyMongoError:
             raise DataUnavailable() from None
         return result.matched_count == 1
+
+    def list_deleted_for_recheck(self, *, limit=50, after=None):
+        """Explicit maintenance pass, including tombstones previously marked purged."""
+        purge_limit(limit)
+        query = {'deleted_at': {'$type': 'date'}}
+        if after is not None:
+            query['_id'] = {'$gt': object_id(after)}
+        try:
+            rows = list(self.videos.find(query).sort('_id', 1).limit(limit + 1))
+        except PyMongoError:
+            raise DataUnavailable() from None
+        return rows[:limit], len(rows) > limit

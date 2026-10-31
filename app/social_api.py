@@ -15,7 +15,7 @@ social = Blueprint('social', __name__, url_prefix='/api')
 def react(video_id):
     user = csrf_user()
     video = approved_video(parse_id(video_id), user)
-    ext('reaction_repository').add(user['_id'], video['_id'], now())
+    ext('interactions_service').react(user['_id'], video['_id'], now())
     total = ext('reaction_repository').count_for([video['_id']]).get(video['_id'], 0)
     return jsonify(data={'reacted': True, 'reaction_count': total})
 
@@ -24,7 +24,7 @@ def react(video_id):
 def unreact(video_id):
     user = csrf_user()
     video = approved_video(parse_id(video_id), user)
-    ext('reaction_repository').remove(user['_id'], video['_id'])
+    ext('interactions_service').unreact(user['_id'], video['_id'])
     return Response(status=204)
 
 
@@ -47,7 +47,7 @@ def create_comment(video_id):
     user = csrf_user()
     video = approved_video(parse_id(video_id), user)
     comment = new_comment(video['_id'], user['_id'], json_payload(), now())
-    ext('comment_repository').insert(comment)
+    ext('interactions_service').comment(comment)
     response = jsonify(data=comment_public(comment, user))
     response.status_code = 201
     response.headers['Location'] = f"/api/comments/{comment['_id']}"
@@ -95,7 +95,7 @@ def report(video_id):
     video = approved_video(parse_id(video_id), user)
     document = new_report(video['_id'], user['_id'], json_payload(), now())
     try:
-        ext('report_repository').insert(document)
+        ext('interactions_service').report(document)
     except ReportConflict:
         raise ApiError(409, 'already_reported', 'Você já denunciou este vídeo.') from None
     response = jsonify(data={'id': str(document['_id']), 'status': 'open'})
