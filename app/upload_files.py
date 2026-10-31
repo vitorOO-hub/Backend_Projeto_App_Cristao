@@ -131,10 +131,18 @@ class UploadLease:
     def cleanup_terminal(self):
         """Only after a terminal database decision; UUID directories are never reused."""
         self.discard_payload()
+        try:
+            # Retire the recovery witness while this lease is still locked. A
+            # reconciler admitted after close() must not claim a workspace that
+            # this owner is about to remove. The lock file itself stays open
+            # until close(), so this ordering also works on Windows.
+            (self.directory / 'manifest.json').unlink(missing_ok=True)
+        except OSError:
+            self.close()
+            return
         self.close()
         try:
             (self.directory / 'lease.lock').unlink(missing_ok=True)
-            (self.directory / 'manifest.json').unlink(missing_ok=True)
             self.directory.rmdir()
         except OSError:
             # Metadata-only leftovers do not reserve quota and can be diagnosed later.

@@ -267,11 +267,13 @@ class FakeUploadRepository(Switch):
             record = self.reservations.get(metadata['_id'])
             if state == 'committed' and any(v['file']['storage_key'] == metadata['storage_key']
                                             for v in self.videos.videos.values()):
-                if record:
+                if record and record['state'] != 'cancelled':
                     record['state'] = 'committed'
                 return 'keep'
             if state == 'committed':
                 return 'manual'
+            if record and record['state'] == 'cancelled':
+                return 'discard'
             self.reservations.setdefault(metadata['_id'], {**metadata, 'user_bytes': 0, 'volume_bytes': 0,
                                                             'pending_slots': 0})['state'] = 'recovering'
             return 'discard'

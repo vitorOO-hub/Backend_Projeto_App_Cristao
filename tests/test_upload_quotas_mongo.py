@@ -13,6 +13,7 @@ from flask import Flask
 
 from app.errors import ApiError, DataUnavailable, StorageUnavailable
 from app.storage import LocalStorage
+from app.upload_files import LeaseBusy, UploadLease
 from app.uploads import ACTIVE, MongoUploadRepository, UploadManager, UploadPolicy
 from app.videos import new_video
 from test_interaction_lifecycle_mongo import AT, lifecycle_database
@@ -213,3 +214,88 @@ with app.app_context():
         assert not folder.exists()
         attempt = manager.begin(account)
         attempt.abort()
+
+
+def test_mongo_terminal_cleanup_does_not_let_concurrent_reconcile_revive_quota(mongo_uploads, monkeypatch):
+    app, database, manager, config = mongo_uploads
+    config['MAX_PENDING_VIDEOS'] = 1
+    manager.policy = UploadPolicy.from_config(config)
+    account = ObjectId()
+    with app.app_context():
+        attempt = manager.begin(account)
+        folder = attempt.lease.directory
+        original_close, original_unlink = attempt.lease.close, Path.unlink
+        recovered, events = [], []
+
+        def check_unlink(path, *args, **kwargs):
+            if path.parent == folder and path.name == 'manifest.json':
+                assert attempt.lease.lock is not None
+                with pytest.raises(LeaseBusy):
+                    UploadLease(manager.storage.root, attempt.metadata['_id'])
+                events.append('manifest-locked')
+            if path.parent == folder and path.name == 'lease.lock':
+                assert attempt.lease.lock is None
+                events.append('lock-closed')
+            return original_unlink(path, *args, **kwargs)
+
+        def interleave_close():
+            original_close()
+            if not recovered:
+                assert not (folder / 'manifest.json').exists()
+                recovered.extend(manager.reconcile(apply=True)[0])
+
+        monkeypatch.setattr(Path, 'unlink', check_unlink)
+        monkeypatch.setattr(attempt.lease, 'close', interleave_close)
+        attempt.abort()
+        assert recovered == [(attempt.metadata['_id'], 'unavailable')]
+        assert events == ['manifest-locked', 'lock-closed']
+        assert database.upload_reservations.find_one({'_id': attempt.metadata['_id']})['state'] == 'cancelled'
+        assert database.upload_reservations.count_documents({'state': {'$in': list(ACTIVE)}}) == 0
+        assert not folder.exists()
+        admitted = manager.begin(account)
+        admitted.abort()
+
+
+def test_mongo_cancelled_recovery_stays_terminal_after_partial_cleanup_failure(mongo_uploads, monkeypatch):
+    app, database, manager, config = mongo_uploads
+    config['MAX_PENDING_VIDEOS'] = 1
+    manager.policy = UploadPolicy.from_config(config)
+    account = ObjectId()
+    with app.app_context():
+        attempt = manager.begin(account)
+        (attempt.lease.directory / 'leftover.part').write_bytes(b'partial')
+        manager.repository.cancel(attempt.metadata)
+        attempt.close()
+        before = database.upload_reservations.find_one({'_id': attempt.metadata['_id']})
+        original_discard = UploadLease.discard_payload
+
+        def fail_old_workspace(lease):
+            if lease.id == attempt.metadata['_id']:
+                raise StorageUnavailable()
+            return original_discard(lease)
+
+        monkeypatch.setattr(UploadLease, 'discard_payload', fail_old_workspace)
+        assert manager.reconcile(apply=True)[0] == [(attempt.metadata['_id'], 'unavailable')]
+        assert database.upload_reservations.find_one({'_id': attempt.metadata['_id']}) == before
+        assert before['state'] == 'cancelled'
+        admitted = manager.begin(account)
+        admitted.abort()
+        monkeypatch.setattr(UploadLease, 'discard_payload', original_discard)
+        assert manager.reconcile(apply=True)[0] == [(attempt.metadata['_id'], 'cancelled')]
+        assert not attempt.lease.directory.exists()
+
+
+def test_mongo_cancelled_marker_cannot_delete_confirmed_media(mongo_uploads):
+    app, database, manager, _ = mongo_uploads
+    with app.app_context():
+        attempt = manager.begin(ObjectId())
+        video = video_for(attempt)
+        manager.storage.commit(staged_file(attempt), attempt.key)
+        manager.repository.complete(attempt.metadata, video)
+        # Preserve media even when a terminal marker and a confirmed video disagree.
+        database.upload_reservations.update_one({'_id': attempt.metadata['_id']}, {'$set': {'state': 'cancelled'}})
+        attempt.close()
+        assert manager.reconcile(apply=True)[0] == [(attempt.metadata['_id'], 'kept')]
+        assert database.upload_reservations.find_one({'_id': attempt.metadata['_id']})['state'] == 'cancelled'
+        assert database.videos.find_one({'_id': video['_id']}) is not None
+        assert manager.storage.path(attempt.key).exists()

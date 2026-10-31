@@ -227,6 +227,83 @@ def test_file_quota_release_is_conservative_when_database_fails_after_unlink(wor
     assert actor.upload().status_code == 201
 
 
+def test_terminal_cleanup_retires_manifest_before_unlock_and_concurrent_reconcile(world, monkeypatch):
+    actor = world.user()
+    manager = configure(world, MAX_PENDING_VIDEOS=1)
+    with world.app.app_context():
+        attempt = manager.begin(actor.id)
+        folder = attempt.lease.directory
+        original_close, original_unlink = attempt.lease.close, Path.unlink
+        events, recovered = [], []
+
+        def check_unlink(path, *args, **kwargs):
+            if path.parent == folder and path.name == 'manifest.json':
+                assert attempt.lease.lock is not None
+                with pytest.raises(LeaseBusy):
+                    UploadLease(world.storage.root, attempt.metadata['_id'])
+                events.append('manifest-locked')
+            if path.parent == folder and path.name == 'lease.lock':
+                assert attempt.lease.lock is None  # Windows cannot unlink an open lock file.
+                events.append('lock-closed')
+            return original_unlink(path, *args, **kwargs)
+
+        def interleave_close():
+            original_close()
+            if recovered:
+                return
+            assert not (folder / 'manifest.json').exists()
+            recovered.extend(manager.reconcile(apply=True)[0])
+
+        monkeypatch.setattr(Path, 'unlink', check_unlink)
+        monkeypatch.setattr(attempt.lease, 'close', interleave_close)
+        attempt.abort()
+        assert recovered == [(attempt.metadata['_id'], 'unavailable')]
+        assert events == ['manifest-locked', 'lock-closed']
+        assert world.uploads.reservations[attempt.metadata['_id']]['state'] == 'cancelled'
+        assert not folder.exists()
+    assert actor.upload().status_code == 201
+
+
+def test_cancelled_recovery_with_partial_cleanup_never_reacquires_quota(world, monkeypatch):
+    actor = world.user()
+    manager = configure(world, MAX_PENDING_VIDEOS=1)
+    with world.app.app_context():
+        attempt = manager.begin(actor.id)
+        (attempt.lease.directory / 'leftover.part').write_bytes(b'partial')
+        world.uploads.cancel(attempt.metadata)
+        attempt.close()
+        original_discard = UploadLease.discard_payload
+
+        def fail_old_workspace(lease):
+            if lease.id == attempt.metadata['_id']:
+                raise StorageUnavailable()
+            return original_discard(lease)
+
+        monkeypatch.setattr(UploadLease, 'discard_payload', fail_old_workspace)
+        before = deepcopy(world.uploads.reservations[attempt.metadata['_id']])
+        rows, _ = manager.reconcile(apply=True)
+        assert rows == [(attempt.metadata['_id'], 'unavailable')]
+        assert world.uploads.reservations[attempt.metadata['_id']] == before
+        assert before['state'] == 'cancelled' and before['state'] not in ACTIVE
+        admitted = manager.begin(actor.id)
+        admitted.abort()
+        monkeypatch.setattr(UploadLease, 'discard_payload', original_discard)
+        assert manager.reconcile(apply=True)[0] == [(attempt.metadata['_id'], 'cancelled')]
+        assert not attempt.lease.directory.exists()
+
+
+def test_cancelled_leftover_cannot_delete_confirmed_media(world):
+    world.uploads.complete_error_after = True
+    assert world.user().upload().status_code == 503
+    record = next(iter(world.uploads.reservations.values()))
+    record['state'] = 'cancelled'
+    path = world.storage.path(record['storage_key'])
+    with world.app.app_context():
+        assert world.app.extensions['upload_manager'].reconcile(apply=True)[0] == [(record['_id'], 'kept')]
+    assert record['state'] == 'cancelled'
+    assert path.exists() and len(world.videos.videos) == 1
+
+
 @pytest.mark.parametrize('key,value', [
     ('MAX_USER_STORAGE_BYTES', 0), ('MAX_USER_STORAGE_BYTES', True),
     ('MAX_PENDING_VIDEOS', -1), ('MAX_PENDING_VIDEOS', 1.5),

@@ -171,13 +171,18 @@ class MongoUploadRepository:
                 raise StorageUnavailable()
             video = self.database['videos'].find_one({'file.storage_key': metadata['storage_key']}, session=session)
             if video is not None:
-                if record is not None:
+                if record is not None and record['state'] != 'cancelled':
                     reservations.update_one({'_id': metadata['_id']},
                                             {'$set': {'state': 'committed', 'video_id': video['_id'],
                                                       'completed_at': to_millis(now())}}, session=session)
                 return 'keep'
             if record is not None and record['state'] == 'committed':
                 return 'manual'
+            if record is not None and record['state'] == 'cancelled':
+                # Cleanup of terminal leftovers must never reacquire quota. The
+                # workspace may disappear immediately after its prior owner
+                # releases the file lock.
+                return 'discard'
             if record is None:
                 reservations.insert_one({**metadata, 'state': 'recovering', 'user_bytes': 0,
                                          'volume_bytes': 0, 'pending_slots': 0,
