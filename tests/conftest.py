@@ -65,6 +65,7 @@ class FakeAuthRepository:
         self.attempts = {}
         self.unavailable = False
         self.race = False
+        self.cleanup_unavailable = False
 
     def check(self):
         if self.unavailable:
@@ -119,8 +120,7 @@ class FakeAuthRepository:
         self.check()
         if email not in self.users:
             return False
-        self.users[email]['role'] = 'admin'
-        return True
+        return self.set_role(self.users[email]['_id'], 'admin')
 
     def update_user(self, user_id, fields):
         self.check()
@@ -132,8 +132,15 @@ class FakeAuthRepository:
 
     def set_role(self, user_id, role):
         self.check()
-        next(u for u in self.users.values() if u['_id'] == user_id)['role'] = role
-        self.sessions = {k: s for k, s in self.sessions.items() if s.get('user_id') != user_id}
+        user = next((u for u in self.users.values() if u['_id'] == user_id), None)
+        if user is None:
+            return False
+        user.update(role=role, auth_version=user.get('auth_version', 0) + 1)
+        if self.cleanup_unavailable:
+            raise AuthUnavailable()
+        self.sessions = {k: s for k, s in self.sessions.items()
+                         if s.get('user_id') != user_id or s.get('auth_version', 0) >= user['auth_version']}
+        return True
 
     def delete_session(self, key):
         self.check()

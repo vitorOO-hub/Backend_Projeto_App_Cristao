@@ -219,6 +219,7 @@ def test_production_set_role_uses_setup_credential(monkeypatch):
     setup_client.__enter__.return_value = setup_client
     collection = setup_client.__getitem__.return_value.__getitem__.return_value
     collection.find_one.return_value = {'_id': ObjectId()}
+    collection.find_one_and_update.return_value = {'_id': ObjectId(), 'auth_version': 1}
     with patch('app.MongoClient', side_effect=[runtime, setup_client]) as mongo:
         app = create_app({'APP_ENV': 'production', 'APP_ORIGIN': 'https://example.com',
                           'TRUSTED_PROXY_IPS': '127.0.0.1', 'JWT_SECRET': JWT_SECRET,
@@ -226,6 +227,7 @@ def test_production_set_role_uses_setup_credential(monkeypatch):
         result = app.test_cli_runner().invoke(args=['set-role', 'admin@example.com', 'admin'])
     assert result.exit_code == 0, result.output
     assert mongo.call_args_list[1].args[0] == 'mongodb+srv://setup.example.com'
-    assert collection.update_one.call_args.args[1] == {'$set': {'role': 'admin'}}
+    assert collection.find_one_and_update.call_args.args[1] == {
+        '$set': {'role': 'admin'}, '$inc': {'auth_version': 1}}
     collection.delete_many.assert_called_once()
     runtime.__getitem__.return_value.__getitem__.return_value.update_one.assert_not_called()

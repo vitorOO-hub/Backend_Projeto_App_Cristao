@@ -132,11 +132,8 @@ class MongoAuthRepository:
     def promote_user(self, email):
         """Operational use only (flask create-admin); there is no HTTP route for this."""
         scalar_selector(email)
-        try:
-            return self.users.update_one({'email_normalized': email},
-                                         {'$set': {'role': 'admin'}}).matched_count == 1
-        except PyMongoError:
-            raise AuthUnavailable() from None
+        user = self.find_user_by_email(email)
+        return self.set_role(user['_id'], 'admin') if user is not None else False
 
     def update_user(self, user_id, fields):
         scalar_selector(user_id)
@@ -154,11 +151,21 @@ class MongoAuthRepository:
         if role not in ('user', 'admin'):
             raise ValueError('Papel deve ser user ou admin.')
         try:
-            self.users.update_one({'_id': user_id}, {'$set': {'role': role}})
-            # Sessões abertas não herdam o papel novo: promoção ou rebaixamento exige novo login.
-            self.sessions.delete_many({'user_id': user_id})
+            # Role and revocation generation are one atomic write. A cleanup failure can
+            # leave expired session records, but cannot let an old cookie inherit the role.
+            user = self.users.find_one_and_update(
+                {'_id': user_id}, {'$set': {'role': role}, '$inc': {'auth_version': 1}},
+                return_document=ReturnDocument.AFTER)
+            if user is None:
+                return False
+            # A later role change may already have issued a newer generation. Never
+            # remove its sessions while finishing this earlier change's cleanup.
+            self.sessions.delete_many({'user_id': user_id, '$or': [
+                {'auth_version': {'$exists': False}},
+                {'auth_version': {'$lt': user['auth_version']}}]})
         except PyMongoError:
             raise AuthUnavailable() from None
+        return True
 
     def delete_session(self, token_hash):
         scalar_selector(token_hash)

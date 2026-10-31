@@ -9,7 +9,7 @@ def test_create_admin_promotes_an_existing_account(world):
     result = run(world, 'create-admin', f'  {email.upper()}  ')
     assert result.exit_code == 0 and 'administrador' in result.output
     assert world.auth.users[email]['role'] == 'admin'
-    assert user.get('/api/moderation/videos').status_code == 200  # role is read from the database
+    assert user.get('/api/moderation/videos').status_code == 401  # promotion revokes the old cookie
 
 
 def test_create_admin_does_not_create_accounts(world):
