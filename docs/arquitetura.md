@@ -1,23 +1,25 @@
 # Arquitetura e decisões técnicas — T01
 
-**Atualização:** 24/10/2026. **Estado:** base Flask, consulta bíblica e cache implementados na T03; sessão anônima/CSRF e cadastro possuem evidências anteriores de testes locais isolados. Login/logout, sessão autenticada de 12 horas e consulta/edição de perfil existem no código; sua presença não comprova integração completa. A revisão D004 abaixo define o comportamento planejado para sessões persistentes e ainda não está implementada. Mídia, frontend, integração Atlas e implantação completa continuam pendentes de verificação. Veja [operação](operacao.md) para execução e evidências disponíveis.
+**Atualização documental:** 31/10/2026. **Estado:** backend implementa autenticação, perfis, mídia, interações/moderação e consulta bíblica/cache. O frontend base `5d79b9d` já contém autenticação, perfil/lista própria, publicação, moderação/denúncias, feed, Amém e versículo; a branch `feat/fluxos-mvp-locais-20261031` complementa visitante, gestão, comentários, bloqueios e perfil, ainda sujeita a revisão/merge. Evidências históricas de Atlas/ffprobe em 29/10 não foram repetidas nesta revisão. Integração completa e implantação continuam sem aceite atual. A política D004 de 30/90 dias é planejamento posterior; o runtime atual usa 12 horas absolutas para toda sessão autenticada. Veja [operação](operacao.md).
 
 ## Stack e organização
 
-Preservar Flask, React web, MongoDB Atlas e AWS EC2 conforme RA01–RA05. Backend e frontend permanecem separados (RA08). Priorizar uma implantação de mesma origem: Nginx serve o build React e encaminha `/api` ao Gunicorn/Flask. Em desenvolvimento, Vite encaminhará `/api` ao Flask; não habilitar CORS amplo para compensar configuração incorreta.
+Preservar Flask, React web, MongoDB Atlas e AWS EC2 conforme RA01–RA05. Backend e frontend permanecem separados (RA08). Priorizar uma implantação de mesma origem: Nginx serve o build React e encaminha `/api` ao Gunicorn/Flask. Em desenvolvimento, Vite encaminha `/api` ao Flask; não habilitar CORS amplo para compensar configuração incorreta.
 
 - Backend: Python 3.12, Flask com application factory, blueprints por domínio, PyMongo síncrono e Requests para a API externa. Testes com Pytest e cliente Flask; banco de teste isolado por interface de repositório. Gunicorn para produção.
 - Frontend: React com TypeScript e Vite; npm e `package-lock.json`. Componentes por fluxo e um cliente HTTP central para sessão, CSRF e erros. Sem estado global adicional até surgir necessidade real.
-- Versões do backend resolvidas na T03 e registradas em `requirements.txt`/`requirements-dev.txt`; dependências instaladas somente no virtualenv local. Versões do frontend serão resolvidas na T04. Não utilizar `latest` sem registrar o resultado.
-- Runtime de frontend alvo: Node 22, versão 22.12 ou superior nessa linha. O Node 18.19.1 observado no PATH precisa ser substituído para os comandos do frontend; não rebaixar Vite apenas para acomodá-lo.
+- Versões do backend resolvidas na T03 e registradas em `requirements.txt`/`requirements-dev.txt`; dependências instaladas somente no virtualenv local. Versões do frontend estão fixadas em `package.json` e `package-lock.json`. Não utilizar `latest` sem registrar o resultado.
+- Runtime de frontend alvo: Node 22, versão 22.12 ou superior nessa linha. Selecionar explicitamente um runtime compatível; os checks locais de 31/10 usaram Node 22.23.3. Não rebaixar Vite para acomodar um runtime antigo do PATH.
 
-Estrutura backend criada na T03: `app/`, `tests/`, dependências, `wsgi.py` e configuração Gunicorn. Frontend `src/`, configuração Vite e scripts permanecem pendentes.
+Estrutura backend criada na T03: `app/`, `tests/`, dependências, `wsgi.py` e configuração Gunicorn. Frontend possui `src/`, configuração Vite e scripts de testes, lint e build.
 
-## Autenticação e permissões — D004
+## Autenticação atual e planejamento D004
+
+**Runtime atual:** JWT HS256 em cookie HttpOnly `app_session`, registro obrigatório/revogável em MongoDB e `SESSION_TTL_SECONDS=43200` (12 horas absolutas), sem renovação. Sessão anônima de CSRF dura 1800 segundos. Logout remove o registro e expira o cookie; a assinatura sozinha não autoriza uma sessão removida.
 
 **Revogação implementada em 31/10/2026:** `auth_version` no usuário é incrementada atomicamente com mudanças operacionais de papel. Cada sessão autenticada guarda a versão do login; acessos autenticados exigem igualdade com a versão atual. Campos legados ausentes equivalem a zero. Assim, uma sessão antiga não herda privilégios novos mesmo se a limpeza física de sessões falhar, e promoção/rebaixamento exigem novo login. O cookie continua JWT HS256, com registro server-side revogável, CSRF e validade absoluta de 12 horas. A política persistente abaixo continua planejada.
 
-**Revisão de planejamento em 24/10/2026:** substituir o vencimento obrigatório de 12 horas para usuários comuns por continuidade entre visitas, mantendo uma política mais restritiva para administradores. O código atual ainda exige `SESSION_TTL_SECONDS=43200` para todas as sessões autenticadas. Os prazos desta seção são decisões iniciais do piloto, configuráveis e sujeitos a avaliação; não são exigências acadêmicas nem valores ótimos comprovados pela pesquisa de mercado.
+**Revisão de planejamento em 24/10/2026 (não implementada):** substituir o vencimento obrigatório de 12 horas para usuários comuns por continuidade entre visitas, mantendo uma política mais restritiva para administradores. O código atual ainda exige `SESSION_TTL_SECONDS=43200` para todas as sessões autenticadas. Os prazos desta seção são decisões iniciais do piloto, configuráveis e sujeitos a avaliação; não são exigências acadêmicas nem valores ótimos comprovados pela pesquisa de mercado.
 
 Preservar sessão persistida no MongoDB; desde 27/10/2026 o cookie carrega um JWT assinado que aponta para esse registro. A escolha permite revogação no servidor e mantém o identificador inacessível ao JavaScript por meio de cookie HttpOnly. Fechar uma aba ou o navegador não deve encerrar a sessão quando o cookie persistente for preservado. O benefício esperado é reduzir o atrito no retorno; aumento de retenção ainda depende de validação com usuários.
 
@@ -39,7 +41,7 @@ O papel atual continua sendo consultado no servidor. Promover uma conta de usuá
 - Cookie `app_session`: HttpOnly, SameSite=Lax, Path=/, sem Domain; Secure em produção HTTPS. Usar Max-Age coerente com a validade efetiva no servidor. A única exceção de Secure é o desenvolvimento explícito em localhost HTTP.
 - Validar `expires_at` e o limite absoluto aplicável em cada acesso; TTL só faz limpeza, não autorização. Sessão persistente é um registro de autorização, não uma conexão HTTP ou processo reservado por usuário.
 - `GET /api/auth/csrf` cria/reutiliza sessão e retorna token CSRF; resposta sem cache. Guardar no servidor o hash do token e comparar em tempo constante. React mantém token em memória, envia `X-CSRF-Token` e cookies nas requisições mutáveis.
-- Todas as operações POST/PUT/PATCH/DELETE, inclusive cadastro/login/logout e renovação, exigem CSRF. Validar Origin nas requisições do navegador contra origem configurada, rejeitar origem divergente e nunca retornar token via CORS público. Cliente sem Origin continua obrigado a apresentar cookie e token CSRF válido.
+- Todas as operações POST/PUT/PATCH/DELETE, inclusive cadastro/login/logout, exigem CSRF; a renovação futura deverá preservar essa proteção. Validar Origin nas requisições do navegador contra origem configurada, rejeitar origem divergente e nunca retornar token via CORS público. Cliente sem Origin continua obrigado a apresentar cookie e token CSRF válido.
 - Cadastro não autentica automaticamente. Login invalida a sessão anterior daquele navegador, gera outra e retorna novo CSRF. Logout exclui a sessão no servidor e expira o cookie. Sessão revogada ou expirada retorna 401 em rotas autenticadas, inclusive se o cliente reutilizar cookie antigo; falha de CSRF continua retornando 403. A revogação impede novas requisições autenticadas, sem desfazer operações já autorizadas.
 - Hash de senha com `generate_password_hash` do Werkzeug, usando scrypt, e verificação pela função correspondente; senha nunca é registrada em log ou devolvida.
 - Papel padrão `user`; `admin` só por comando operacional autenticado no ambiente do servidor, fora do cadastro público. Ler papel atual do usuário no servidor, não confiar em campos do cliente.
@@ -56,13 +58,13 @@ Para usuários comuns, `expires_at` é o menor valor entre `last_renewed_at + 30
 - Atualizar o registro de forma condicional e atômica, verificando que a sessão ainda existe e não venceu. Não utilizar upsert para renovar. Logout e requisições atrasadas de renovação não podem recriar uma autorização removida.
 - Emitir o cookie atualizado somente após confirmar a persistência, com validade limitada à do registro. Tratar concorrência entre abas e respostas fora de ordem sem estender o limite absoluto. Um cookie remanescente nunca autoriza acesso se o registro já tiver sido removido.
 - Não ampliar silenciosamente sessões antigas de 12 horas: elas mantêm sua validade original, sem renovação pela nova política. O próximo login cria o registro no formato novo.
-- Na implementação, alinhar configuração, `api.md`, `operacao.md`, escopo e exemplos de ambiente com esta revisão. Nesta atualização documental, esses arquivos e o código ainda descrevem ou executam a política anterior.
+- Na implementação, alinhar configuração, `api.md`, `operacao.md`, escopo e exemplos de ambiente com esta revisão. Os documentos distinguem planejamento e runtime; o código continua executando a política atual de 12 horas.
 
 ### Recuperação da conta no React
 
 Ao iniciar, o React consulta `GET /api/me` com o cookie existente e mantém um estado de verificação antes de decidir sobre a tela de login. Resposta 200 recupera a identidade e permite solicitar renovação quando aplicável; 401 indica ausência de sessão válida. Erro de rede ou 503 apresenta indisponibilidade com tentativa de recuperação, sem ser tratado como logout. O feed público continua acessível conforme suas regras.
 
-O cliente HTTP central coordena obtenção de CSRF e renovação. Abrir outra aba não deve causar falhas recorrentes por invalidação de tokens compartilhados. A implementação atual troca o token a cada GET CSRF; definir e testar o comportamento entre abas antes de integrar a renovação. Não repetir automaticamente mutações sem saber se a tentativa anterior foi executada.
+O cliente HTTP central coordena obtenção de CSRF; a renovação de sessão ainda não existe. Abrir outra aba não deve causar falhas recorrentes por invalidação de tokens compartilhados. A implementação atual troca o token a cada GET CSRF; definir e testar o comportamento entre abas antes de integrar a renovação. Não repetir automaticamente mutações sem saber se a tentativa anterior foi executada.
 
 ### Critérios de aceite da revisão
 
@@ -84,7 +86,7 @@ Tela de dispositivos conectados, encerramento remoto de outras sessões, Google/
 
 Para o piloto, arquivos em `instance/uploads` localmente e volume persistente dedicado na EC2. Nunca no diretório público do React, no Git ou como binário no MongoDB.
 
-- Um arquivo por requisição; limite do arquivo **50 MiB** (52.428.800 bytes). Limite total multipart **51 MiB** (53.477.376 bytes), a habilitar somente na rota de upload, consistentemente no proxy e Flask. As rotas atuais têm limite de 16 KiB; a implantação do upload deve definir essa exceção sem ampliar autenticação/perfil.
+- Um arquivo por requisição; limite do arquivo **50 MiB** (52.428.800 bytes). Limite total multipart **51 MiB** (53.477.376 bytes), já aplicado somente na rota de upload pelo Flask e na localização exata `/api/videos` do modelo Nginx. Fora do upload, o corpo continua limitado a 16 KiB. O modelo ainda precisa ser validado no destino.
 - MP4 real com vídeo H.264, áudio AAC opcional e duração maior que zero e até 90 segundos. Nenhuma transcodificação nesta entrega.
 - Validar nome/formato declarado, tamanho real e metadados com `ffprobe`; não aceitar só extensão/MIME. Não extrair arquivos, usar shell para nomes enviados ou aceitar caminhos fornecidos pelo cliente. `ffprobe` com timeout de 10 segundos e saída limitada; ausência da ferramenta gera indisponibilidade controlada (503), sem aceitar arquivo sem validação.
 - Escrever progressivamente em área temporária, validar e mover com nome UUID gerado pelo servidor; limpar temporários em falha. Metadados incluem duração, codecs, bytes e localização privada. Não expor caminho de disco.
@@ -112,7 +114,7 @@ Consulta bíblica implementada pelo Flask com bible-api.com, tradução Almeida,
 
 Sem cache válido e com falha externa: 503; resposta inválida do provedor: 502; passagem inexistente: 404. Reprodução de vídeo não depende da consulta bíblica. Não marcar RA07 concluído com resposta simulada.
 
-Nginx + Gunicorn + build React na mesma EC2, HTTPS em produção, uploads persistentes fora do diretório de código. A configuração e a URL serão criadas/verificadas em T03/T12. Não criar recursos pagos nem inferir acesso AWS nesta tarefa.
+Nginx + Gunicorn + build React na mesma EC2, HTTPS em produção, uploads persistentes fora do diretório de código. Modelos de configuração já existem; instalação, validação no destino e URL pública continuam pendentes em T12. Não criar recursos pagos nem inferir acesso AWS nesta tarefa.
 
 ### Controles de segurança implementados após auditoria
 
