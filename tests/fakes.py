@@ -5,9 +5,11 @@ from threading import RLock
 
 from bson import ObjectId
 
-from app.errors import DataUnavailable, ReportConflict
+from app.errors import DataUnavailable, ReportConflict, StorageUnavailable
 from app.videos import EMPTY_REVIEW, to_millis
 from app.interactions import unavailable_video
+from app.uploads import ACTIVE, MongoUploadRepository, check_admission
+from app.auth import now
 
 DECISION_FROM = {'approved': ('pending', 'rejected'), 'rejected': ('pending', 'approved')}
 
@@ -188,6 +190,91 @@ class FakeOrphanRepository(Switch):
                      or self.videos.videos[row['video_id']]['deleted_at'] is not None)]
         rows = sorted(rows, key=lambda row: row['_id'])
         return [{'_id': row['_id'], 'video_id': row['video_id']} for row in rows[:limit]], len(rows) > limit
+
+
+class FakeUploadRepository(Switch):
+    """Fixture-only quota ledger, serialized across fixture workers and video writes."""
+    def __init__(self, videos):
+        super().__init__()
+        self.videos, self.reservations = videos, {}
+        self.complete_error_before = self.complete_error_after = self.reserve_error_after = False
+
+    def reserve(self, metadata, policy, user_bytes, volume_bytes, capacity):
+        with self.videos.lifecycle_lock:
+            self.check()
+            self.videos.check()
+            videos = [v for v in self.videos.videos.values() if v['author_id'] == metadata['author_id']]
+            own = [r for r in self.reservations.values()
+                   if r['author_id'] == metadata['author_id'] and r['state'] in ACTIVE]
+            volume = [r for r in self.reservations.values()
+                      if r['volume_id'] == metadata['volume_id'] and r['state'] in ACTIVE]
+            used = sum(v['file']['bytes'] for v in videos
+                       if v.get('purged_at') is None and v.get('file_removed_at') is None)
+            pending = sum(v['status'] == 'pending' and v['deleted_at'] is None for v in videos)
+            check_admission(policy, used, pending, sum(r['user_bytes'] for r in own),
+                            sum(r['pending_slots'] for r in own), sum(r['volume_bytes'] for r in volume),
+                            user_bytes, volume_bytes, capacity())
+            if metadata['_id'] in self.reservations:
+                raise DataUnavailable()
+            self.reservations[metadata['_id']] = {**metadata, 'state': 'reserved', 'user_bytes': user_bytes,
+                                                  'volume_bytes': volume_bytes, 'pending_slots': 1}
+            if self.reserve_error_after:
+                raise DataUnavailable()
+
+    def complete(self, metadata, video):
+        with self.videos.lifecycle_lock:
+            self.check()
+            if self.complete_error_before:
+                raise DataUnavailable()
+            record = self.reservations.get(metadata['_id'])
+            if (record is None or record['state'] != 'reserved'
+                    or not MongoUploadRepository._matches(record, metadata)
+                    or video['file']['bytes'] > record['user_bytes']):
+                raise StorageUnavailable()
+            self.videos.insert(video)
+            record.update(state='committed', video_id=video['_id'])
+            if self.complete_error_after:
+                raise DataUnavailable()
+
+    def cancel(self, metadata):
+        with self.videos.lifecycle_lock:
+            self.check()
+            record = self.reservations.get(metadata['_id'])
+            if not MongoUploadRepository._matches(record, metadata) or record and record['state'] == 'committed':
+                raise StorageUnavailable()
+            self.reservations.setdefault(metadata['_id'], {**metadata, 'user_bytes': 0, 'volume_bytes': 0,
+                                                            'pending_slots': 0})['state'] = 'cancelled'
+
+    def inspect(self, metadata):
+        self.check()
+        record = self.reservations.get(metadata['_id'])
+        if not MongoUploadRepository._matches(record, metadata):
+            raise StorageUnavailable()
+        found = any(v['file']['storage_key'] == metadata['storage_key'] for v in self.videos.videos.values())
+        return 'committed' if found else (record['state'] if record else 'unreserved')
+
+    def prepare_recovery(self, metadata):
+        with self.videos.lifecycle_lock:
+            self.check()
+            state = self.inspect(metadata)
+            record = self.reservations.get(metadata['_id'])
+            if state == 'committed' and any(v['file']['storage_key'] == metadata['storage_key']
+                                            for v in self.videos.videos.values()):
+                if record:
+                    record['state'] = 'committed'
+                return 'keep'
+            if state == 'committed':
+                return 'manual'
+            self.reservations.setdefault(metadata['_id'], {**metadata, 'user_bytes': 0, 'volume_bytes': 0,
+                                                            'pending_slots': 0})['state'] = 'recovering'
+            return 'discard'
+
+    def mark_file_removed(self, video, volume_id):
+        with self.videos.lifecycle_lock:
+            self.check()
+            stored = self.videos.videos.get(video['_id'])
+            if stored and stored['deleted_at'] is not None and stored.get('file_removed_at') is None:
+                stored['file_removed_at'] = to_millis(now())
 
 
 class FakeReactionRepository(Switch):

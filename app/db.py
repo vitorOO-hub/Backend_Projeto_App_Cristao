@@ -12,6 +12,7 @@ INDEXES = {
         IndexModel([('status', 1), ('category', 1), ('created_at', -1), ('_id', -1)],
                    name='videos_feed_category'),
         IndexModel([('author_id', 1), ('created_at', -1), ('_id', -1)], name='videos_author'),
+        IndexModel([('file.storage_key', 1)], name='videos_storage_key'),
         # Only tombstones: finds deleted videos whose file and relations are still to be purged.
         IndexModel([('deleted_at', 1)], name='videos_purge',
                    partialFilterExpression={'deleted_at': {'$type': 'date'}}),
@@ -39,6 +40,12 @@ INDEXES = {
     'blocks': [
         IndexModel([('user_id', 1), ('blocked_user_id', 1)], unique=True, name='blocks_pair_unique'),
         IndexModel([('user_id', 1), ('created_at', -1), ('_id', -1)], name='blocks_list'),
+    ],
+    'upload_guards': [IndexModel([('_id', 1)], name='_id_')],
+    'upload_reservations': [
+        IndexModel([('author_id', 1), ('state', 1)], name='upload_reservations_author'),
+        IndexModel([('volume_id', 1), ('state', 1)], name='upload_reservations_volume'),
+        IndexModel([('storage_key', 1)], unique=True, name='upload_reservations_storage_unique'),
     ],
 }
 

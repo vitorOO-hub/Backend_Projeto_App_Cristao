@@ -56,31 +56,34 @@ def create():
     user = csrf_user()
     if request.mimetype != 'multipart/form-data':
         raise ApiError(415, 'unsupported_media_type', 'Envie o vídeo como multipart/form-data.')
-    if any(len(request.form.getlist(key)) != 1 for key in request.form):
-        raise bad_request('Dados inválidos.')
-    metadata = validate_metadata(request.form.to_dict())
-    if set(request.files) != {'file'} or len(request.files.getlist('file')) != 1:
-        raise bad_request('Envie exatamente um arquivo no campo "file".')
-    upload = request.files['file']
-    if not (upload.filename or '').lower().endswith('.mp4'):
-        raise ApiError(415, 'unsupported_media_type', 'Somente arquivos .mp4 são aceitos.')
-    storage = ext('storage')
+    # Neither request.form nor request.files may be accessed before admission:
+    # Flask's parser would already receive and spool the file at that point.
+    attempt = ext('upload_manager').begin(user['_id'])
+    request.upload_attempt = attempt
     try:
-        temp, size = storage.receive(upload.stream, current_app.config['MAX_VIDEO_BYTES'])
-    except FileTooLarge:
-        raise ApiError(413, 'file_too_large', 'O vídeo excede o limite de 50 MiB.') from None
-    key, committed = storage.new_key(), False
-    try:
+        if any(len(request.form.getlist(key)) != 1 for key in request.form):
+            raise bad_request('Dados inválidos.')
+        metadata = validate_metadata(request.form.to_dict())
+        if set(request.files) != {'file'} or len(request.files.getlist('file')) != 1:
+            raise bad_request('Envie exatamente um arquivo no campo "file".')
+        upload = request.files['file']
+        if not (upload.filename or '').lower().endswith('.mp4'):
+            raise ApiError(415, 'unsupported_media_type', 'Somente arquivos .mp4 são aceitos.')
+        try:
+            temp, size = ext('storage').receive(upload.stream, current_app.config['MAX_VIDEO_BYTES'],
+                                                temp_dir=attempt.lease.directory)
+        except FileTooLarge:
+            raise ApiError(413, 'file_too_large', 'O vídeo excede o limite de 50 MiB.') from None
+        request.close()  # release parser spools before probing/committing the private copy
         info = ext('media_probe')(temp)
-        video = new_video(user['_id'], metadata, {'storage_key': key, 'bytes': size, **info}, now())
-        storage.commit(temp, key)
-        committed = True
-        ext('video_repository').insert(video)
+        video = new_video(user['_id'], metadata, {'storage_key': attempt.key, 'bytes': size, **info}, now())
+        attempt.publish(temp, video)
     except BaseException:
-        storage.discard(temp)
-        if committed:
-            storage.delete(key)
+        request.close()
+        attempt.abort()
         raise
+    finally:
+        attempt.close()
     response = jsonify(data=serialize_videos([video], user, True)[0])
     response.status_code = 201
     response.headers['Location'] = f"/api/videos/{video['_id']}"

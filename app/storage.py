@@ -27,9 +27,9 @@ class LocalStorage:
             raise ValueError('Chave de armazenamento inválida.')
         return self.root / key
 
-    def receive(self, stream, max_bytes):
+    def receive(self, stream, max_bytes, *, temp_dir=None):
         """Copy an upload to a temporary file, stopping as soon as it exceeds `max_bytes`."""
-        path = self.temp / (uuid.uuid4().hex + '.part')
+        path = Path(temp_dir or self.temp) / (uuid.uuid4().hex + '.part')
         size = 0
         try:
             with open(path, 'xb') as output:
