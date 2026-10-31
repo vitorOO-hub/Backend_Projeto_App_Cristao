@@ -1,7 +1,7 @@
 """Feed, publication, own videos and media delivery (RF02-RF05)."""
 from flask import Blueprint, Response, current_app, jsonify, request, send_file
 
-from app.access import (blocked_by, ext, load_video, not_found, parse_id, serialize_videos)
+from app.access import (ext, load_video, not_found, parse_id, serialize_videos, viewer_id)
 from app.auth import authenticated_user, csrf_user, json_payload, now, optional_user, read_session
 from app.constants import CATEGORIES, VIDEO_STATUSES
 from app.errors import ApiError
@@ -33,7 +33,7 @@ def feed():
     scope = f'feed|{category}|{author_id}'
     limit, after = page_params(args, scope)
     items, more = ext('video_repository').list_approved(
-        category=category, author_id=author_id, exclude_authors=blocked_by(viewer),
+        category=category, author_id=author_id, viewer_id=viewer_id(viewer),
         limit=limit, after=after)
     return page_response(items, more, scope, serialize_videos(items, viewer, False))
 

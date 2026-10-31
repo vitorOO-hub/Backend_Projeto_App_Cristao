@@ -1,7 +1,7 @@
 """Reactions, comments, reports and blocks (RF06, RF07, RF09, RF10)."""
 from flask import Blueprint, Response, jsonify, request
 
-from app.access import approved_video, blocked_by, ext, not_found, parse_id
+from app.access import approved_video, ext, not_found, parse_id, viewer_id
 from app.auth import authenticated_user, csrf_user, json_payload, now, optional_user, read_session
 from app.auth import repository as accounts
 from app.errors import ApiError, ReportConflict
@@ -35,7 +35,7 @@ def comments(video_id):
     scope = f"comments|{video['_id']}"
     limit, after = page_params(query_args({'cursor', 'limit'}), scope)
     items, more = ext('comment_repository').list_for_video(
-        video['_id'], exclude_authors=blocked_by(viewer), limit=limit, after=after)
+        video['_id'], viewer_id=viewer_id(viewer), limit=limit, after=after)
     authors = accounts().find_users_by_ids({item['author_id'] for item in items})
     data = [comment_public(item, authors[item['author_id']]) for item in items
             if item['author_id'] in authors]
@@ -66,7 +66,7 @@ def find_comment(comment_id, viewer):
 def comment_detail(comment_id):
     viewer = optional_user()
     comment = find_comment(comment_id, viewer)
-    if comment['author_id'] in blocked_by(viewer):
+    if viewer is not None and ext('block_repository').exists(viewer['_id'], comment['author_id']):
         raise not_found()
     author = accounts().find_user_by_id(comment['author_id'])
     if author is None:

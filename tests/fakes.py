@@ -30,6 +30,10 @@ def page(items, newest_first, limit, after):
     return [deepcopy(item) for item in items[:limit]], len(items) > limit
 
 
+def hidden_from(repository, author_id, viewer_id):
+    return viewer_id is not None and repository.blocks.exists(viewer_id, author_id)
+
+
 class Switch:
     """Lets a test simulate a database outage for any repository."""
 
@@ -60,12 +64,14 @@ class FakeVideoRepository(Switch):
         video = self.videos.get(video_id)
         return deepcopy(video) if video and video['deleted_at'] is None else None
 
-    def list_approved(self, *, category=None, author_id=None, exclude_authors=(), limit=10, after=None):
+    def list_approved(self, *, category=None, author_id=None, exclude_authors=(), viewer_id=None,
+                      limit=10, after=None):
         self.check()
         items = [v for v in self.live() if v['status'] == 'approved'
                  and (category is None or v['category'] == category)
                  and (author_id is None or v['author_id'] == author_id)
-                 and v['author_id'] not in exclude_authors]
+                 and v['author_id'] not in exclude_authors
+                 and not hidden_from(self, v['author_id'], viewer_id)]
         return page(items, True, limit, after)
 
     def list_by_author(self, author_id, *, status=None, limit=10, after=None):
@@ -73,10 +79,11 @@ class FakeVideoRepository(Switch):
         items = [v for v in self.live() if v['author_id'] == author_id and status in (None, v['status'])]
         return page(items, True, limit, after)
 
-    def find_approved_by_ids(self, video_ids, exclude_authors=()):
+    def find_approved_by_ids(self, video_ids, exclude_authors=(), *, viewer_id=None):
         self.check()
         return [deepcopy(v) for v in self.live() if v['_id'] in video_ids and v['status'] == 'approved'
-                and v['author_id'] not in exclude_authors]
+                and v['author_id'] not in exclude_authors
+                and not hidden_from(self, v['author_id'], viewer_id)]
 
     def count_approved_by_author(self, author_id):
         self.check()
@@ -302,15 +309,24 @@ class FakeReactionRepository(Switch):
         self.check()
         return {video_id for user, video_id in self.pairs if user == user_id and video_id in video_ids}
 
-    def list_by_user(self, user_id, *, limit=10, after=None):
+    def visible_video(self, video_id, viewer_id):
+        if viewer_id is None:
+            return True
+        video = self.videos.videos.get(video_id)
+        return (video is not None and video['deleted_at'] is None and video['status'] == 'approved'
+                and not hidden_from(self, video['author_id'], viewer_id))
+
+    def list_by_user(self, user_id, *, viewer_id=None, limit=10, after=None):
         self.check()
         items = [{'_id': video_id, 'user_id': user, 'video_id': video_id, 'created_at': at}
-                 for (user, video_id), at in self.pairs.items() if user == user_id]
+                 for (user, video_id), at in self.pairs.items()
+                 if user == user_id and self.visible_video(video_id, viewer_id)]
         return page(items, True, limit, after)
 
-    def count_by_user(self, user_id):
+    def count_by_user(self, user_id, *, viewer_id=None):
         self.check()
-        return sum(1 for user, _ in self.pairs if user == user_id)
+        return sum(1 for user, video_id in self.pairs
+                   if user == user_id and self.visible_video(video_id, viewer_id))
 
     def count_received(self, author_id):
         """Reactions on the author's approved, undeleted videos; `videos` is wired by the test world."""
@@ -340,17 +356,19 @@ class FakeCommentRepository(Switch):
         self.check()
         return deepcopy(self.comments.get(comment_id))
 
-    def list_for_video(self, video_id, *, exclude_authors=(), limit=10, after=None):
+    def list_for_video(self, video_id, *, exclude_authors=(), viewer_id=None, limit=10, after=None):
         self.check()
         items = [c for c in self.comments.values()
-                 if c['video_id'] == video_id and c['author_id'] not in exclude_authors]
+                 if c['video_id'] == video_id and c['author_id'] not in exclude_authors
+                 and not hidden_from(self, c['author_id'], viewer_id)]
         return page(items, False, limit, after)
 
-    def count_for(self, video_ids, exclude_authors=()):
+    def count_for(self, video_ids, exclude_authors=(), *, viewer_id=None):
         self.check()
         totals = {}
         for comment in self.comments.values():
-            if comment['video_id'] in video_ids and comment['author_id'] not in exclude_authors:
+            if (comment['video_id'] in video_ids and comment['author_id'] not in exclude_authors
+                    and not hidden_from(self, comment['author_id'], viewer_id)):
                 totals[comment['video_id']] = totals.get(comment['video_id'], 0) + 1
         return totals
 
@@ -420,10 +438,6 @@ class FakeBlockRepository(Switch):
                  for (user, blocked), at in self.blocks.items() if user == user_id]
         return page(items, True, limit, after)
 
-    def blocked_ids(self, user_id, limit=1000):
-        self.check()
-        return [blocked for user, blocked in self.blocks if user == user_id]
-
     def exists(self, user_id, blocked_user_id):
         self.check()
         return (user_id, blocked_user_id) in self.blocks
@@ -442,24 +456,25 @@ class FakeFollowRepository(Switch):
         self.check()
         self.follows.pop((follower_id, followee_id), None)
 
-    def rows(self, user_id, side, excluded):
+    def rows(self, user_id, side, excluded, viewer_id=None):
         other = 1 - side
         return [{'_id': key_id, 'follower_id': pair[0], 'followee_id': pair[1], 'created_at': at}
                 for pair, (key_id, at) in self.follows.items()
-                if pair[side] == user_id and pair[other] not in excluded]
+                if pair[side] == user_id and pair[other] not in excluded
+                and not hidden_from(self, pair[other], viewer_id)]
 
-    def list_followers(self, user_id, *, exclude_users=(), limit=10, after=None):
+    def list_followers(self, user_id, *, exclude_users=(), viewer_id=None, limit=10, after=None):
         self.check()
-        return page(self.rows(user_id, 1, exclude_users), True, limit, after)
+        return page(self.rows(user_id, 1, exclude_users, viewer_id), True, limit, after)
 
-    def list_following(self, user_id, *, exclude_users=(), limit=10, after=None):
+    def list_following(self, user_id, *, exclude_users=(), viewer_id=None, limit=10, after=None):
         self.check()
-        return page(self.rows(user_id, 0, exclude_users), True, limit, after)
+        return page(self.rows(user_id, 0, exclude_users, viewer_id), True, limit, after)
 
-    def count_followers(self, user_id, exclude_users=()):
+    def count_followers(self, user_id, exclude_users=(), *, viewer_id=None):
         self.check()
-        return len(self.rows(user_id, 1, exclude_users))
+        return len(self.rows(user_id, 1, exclude_users, viewer_id))
 
-    def count_following(self, user_id, exclude_users=()):
+    def count_following(self, user_id, exclude_users=(), *, viewer_id=None):
         self.check()
-        return len(self.rows(user_id, 0, exclude_users))
+        return len(self.rows(user_id, 0, exclude_users, viewer_id))

@@ -67,6 +67,8 @@ class World:
         self.blocks = FakeBlockRepository()
         self.follows = FakeFollowRepository()
         self.reactions.videos = self.videos
+        for repository in (self.videos, self.reactions, self.comments, self.follows):
+            repository.blocks = self.blocks
         self.interactions = FakeInteractions(self.videos, self.reactions, self.comments, self.reports)
         self.orphans = FakeOrphanRepository(self.videos, self.reactions, self.comments)
         self.uploads = FakeUploadRepository(self.videos)
