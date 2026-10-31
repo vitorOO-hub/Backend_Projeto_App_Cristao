@@ -1,9 +1,13 @@
 # Backend_Projeto_App_Cristao
 Backend do projeto agil e programação eficaz do app cristao
 
-## Execução — entrega T03
+## Execução local
 
-Backend Flask com application factory, `GET /api/health` e `GET /api/bible/passages`. Integração real com bible-api.com em Almeida verificada para João 3:16 e Salmos 23:1. Cadastro, login, logout e perfil; publicação, feed e entrega de vídeo; reações, comentários, denúncias e bloqueios; e moderação estão implementados e testados (ver [contrato da API](docs/api.md)). Publicar vídeo exige `ffprobe` instalado (veja [operação](docs/operacao.md)). O fluxo completo (publicar, moderar, listar, reproduzir, reagir, comentar e denunciar) foi verificado em 29/10/2026 contra o Atlas de desenvolvimento e com o `ffprobe` real. Ainda faltam o consumo pelo React, o deploy na EC2 e a rota opcional de renovação de sessão (D004).
+Backend Flask com application factory, autenticação, perfis, publicação e entrega privada de mídia, feed, reações, comentários, denúncias, bloqueios e moderação (ver [contrato da API](docs/api.md)). A sessão usa JWT HS256 em cookie HttpOnly com registro revogável no servidor e validade absoluta de 12 horas; o cliente React envia cookie e CSRF pelo cliente HTTP central.
+
+O frontend da equipe, na base `5d79b9d`, já consome autenticação, perfil/lista própria, publicação, moderação/denúncias, feed, Amém e passagem bíblica. A branch frontend `feat/fluxos-mvp-locais-20261031` desenvolve acesso visitante, gestão de vídeos, comentários, bloqueios e edição/perfil público; sua existência não significa integração na `main` nem validação com banco real.
+
+O registro de 29/10/2026 relata prova contra Atlas de desenvolvimento e `ffprobe` real; essa prova não foi repetida na revisão documental de 31/10. Publicar exige `ffprobe` (veja [operação](docs/operacao.md)). Integração real React–Flask–Atlas e deploy EC2 continuam pendentes de aceite. Renovação de sessão 30/90 dias é planejamento posterior, sem implementação atual.
 
 Requer Python 3.12. No diretório deste repositório:
 
