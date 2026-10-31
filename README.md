@@ -33,6 +33,8 @@ Sem URI MongoDB, o desenvolvimento usa cache SQLite em `instance/`, ignorado pel
 
 - [Arquitetura](docs/arquitetura.md) e [contrato da API](docs/api.md): decisões e estado das rotas.
 - [Execução e preparação de EC2](docs/operacao.md).
+- [Verificação local e matriz de integração futura](docs/verificacao-local.md).
+- [Roteiro de demonstração e entrega](docs/roteiro-demonstracao.md).
 - [Controles de segurança e preparação para publicação](docs/seguranca.md): limites, proxy confiável, TLS, credenciais e recuperação de dados.
 
 - [Documento de Escopo e Requisitos do Projeto](docs/escopo-e-requisitos.md): visão do produto, análise de lacunas, arquitetura proposta, funcionalidades, prioridades, cronograma e critérios de aceite.

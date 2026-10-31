@@ -135,3 +135,31 @@ Implementar em conjunto política de sessão, persistência, renovação, config
 - Antes do aceite, executar testes isolados e verificar React–Flask–Atlas, cookie HTTPS, expiração e revogação no ambiente publicado. Registrar evidências próprias; esta documentação não comprova implantação ou capacidade para 5.000 usuários simultâneos.
 
 Gestão remota de dispositivos, OAuth, MFA, passkeys e confirmação adicional específica para moderação ficam para evolução posterior.
+
+## Preparação local da versão candidata e retorno
+
+Esta seção prepara o procedimento; não instala serviços, cria recursos ou executa integração. Usar [verificação local](verificacao-local.md) e [roteiro de demonstração](roteiro-demonstracao.md) antes de propor publicação.
+
+### Inventário a conferir antes da autorização
+
+| Elemento | Modelo/caminho previsto | Verificação pendente no destino |
+| --- | --- | --- |
+| Backend e virtualenv | `/srv/app-cristao/backend` e `.venv` | SHA revisado, dependências fixadas, permissões de leitura/execução do usuário `appcristao` |
+| Frontend | `/srv/app-cristao/frontend/dist` | Build das mesmas fontes revisadas, fallback SPA e `/api` na mesma origem |
+| Serviço | [modelo systemd](../deploy/app-cristao.service) | `EnvironmentFile=/etc/app-cristao/backend.env`, Gunicorn em loopback e diretório de trabalho válidos |
+| Mídia | `UPLOAD_DIR=/var/lib/app-cristao/uploads` | Volume persistente fora do código, espaço/limites, acesso do serviço e ffprobe; nenhum alias público |
+| Proxy | [modelo Nginx](../deploy/nginx.conf.example) | Domínio/certificado reais, proxy confiável, limites 16 KiB/51 MiB, HTTPS e Range por rota autorizada |
+| Banco | `MONGODB_URI` runtime; `MONGODB_SETUP_URI` somente operacional | TLS/rede e privilégios por coleção; índices de auth/cache/produto criados explicitamente pelo responsável |
+| Sessão | `JWT_SECRET`, `APP_ORIGIN`, cookies Secure | Mesma chave por worker, origem HTTPS e TTL atual de 12h; não imprimir segredos nos registros |
+
+Conferir os artefatos e o diff local não valida Nginx/systemd no servidor. Após instalação autorizada, os responsáveis deverão executar `nginx -t` e `systemd-analyze verify` com os caminhos reais. Não executar os comandos `init-auth`, `init-db`, `init-cache`, `set-role` ou `purge-videos` contra um banco operacional apenas para validar documentação.
+
+### Procedimento de retorno preparado
+
+1. Antes de publicar, registrar SHAs dos dois repositórios, dependências, configuração revisada sem valores secretos, localização da mídia e versão anterior conhecida. Preservar os artefatos de build correspondentes às duas versões.
+2. Confirmar com o responsável a compatibilidade da versão anterior com os dados atuais e a existência de backup/recuperação verificados em ambiente isolado. Alteração de aplicação não autoriza restaurar banco nem apagar/migrar dados.
+3. Se a candidata falhar, limitar a exposição pelo procedimento aprovado do destino e registrar o erro sem segredos. Retornar somente código/build/configuração à versão revisada anterior, mantendo `UPLOAD_DIR`, banco e segredos operacionais intactos. Não usar reset/limpeza do diretório de dados como retorno.
+4. Revalidar processo/health, entrega do frontend, sessão/permissões, reprodução privada e persistência pelo roteiro autorizado. Health sozinho não comprova recuperação. Registrar versões efetivas e resultado.
+5. Se os dados forem incompatíveis ou a falha exigir restauração, interromper a troca e acionar o responsável pelo plano de recuperação; ensaiar restauração apenas em base isolada antes de qualquer decisão operacional.
+
+Nenhuma dessas ações foi executada nesta preparação. A confirmação final de TLS, índices/privilégios, concorrência MongoDB entre workers, persistência após reinício e restauração isolada continua pendente de ambiente autorizado.
