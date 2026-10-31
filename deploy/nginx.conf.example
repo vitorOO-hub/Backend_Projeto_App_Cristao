@@ -49,6 +49,11 @@ server {
     location = /api/videos {
         client_max_body_size 51m;
         client_body_timeout 60s;
+        # A aplicação deve reservar a cota antes que o corpo seja recebido em disco.
+        # HTTP/1.1 também evita buffering obrigatório de requisições chunked.
+        proxy_http_version 1.1;
+        proxy_request_buffering off;
+        proxy_set_header Connection "";
         limit_req zone=api_per_ip burst=20 nodelay;
         limit_req zone=api_global burst=60 nodelay;
         limit_conn api_connections 10;
