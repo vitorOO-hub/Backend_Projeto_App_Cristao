@@ -1,6 +1,20 @@
-# Contrato da API — v0.7
+# Contrato da API — v0.8
 
-**Data:** 24/10/2026. **Estado:** `/api/health` e `/api/bible/passages` implementadas e verificadas na T03. Autenticação implementada com verificação local isolada: GET `/api/auth/csrf`, POST `/api/users`, POST `/api/auth/login`, POST `/api/auth/logout`, GET/PATCH `/api/me` e GET `/api/users/{id}`; integração com o Atlas verificada em 29/10/2026 (fluxo completo com `ffprobe` real, contra o banco de desenvolvimento); consumo pelo React pendente. O código mantém sessões autenticadas de 12 horas. A política persistente e a rota `POST /auth/session/renew` (D004) são planejadas, ainda não implementadas. As rotas de vídeo, feed, mídia, reações, comentários, denúncias, bloqueios e moderação também estão implementadas (ver "Estado implementado das rotas de vídeo, interações e moderação"). Referência: [arquitetura](arquitetura.md) e RF01–RF13 do [escopo](escopo-e-requisitos.md).
+## Revisão de segurança — 31/10/2026
+
+Mudanças de papel por operação administrativa invalidam as sessões anteriores. O próximo acesso protegido exige novo login; formato JWT/cookie, CSRF e duração absoluta de 12 horas permanecem.
+
+`POST /api/videos` reserva recursos antes da leitura multipart. Arquivo: até 50 MiB; requisição: até 51 MiB. A conta pode manter até 1 GiB de arquivos, somando todos os estados e excluídos ainda não removidos fisicamente. Ao atingir dez vídeos pendentes, incluindo reservas de novos envios, novos uploads são recusados. Esses limites não impedem edição/exclusão nem removem arquivos existentes acima da cota. A admissão considera reservas simultâneas e recusa projeção acima de 80% de uso ou abaixo de 2 GiB livres no volume de mídia. São parâmetros iniciais configuráveis do piloto.
+
+| HTTP / código JSON | Significado e mensagem para o usuário |
+| --- | --- |
+| 409 `storage_quota_exceeded` | Cota da conta atingida; excluir vídeos e aguardar a limpeza física para liberar espaço. |
+| 409 `pending_video_limit` | Limite de publicações em análise atingido; aguardar revisão antes de enviar outro vídeo. |
+| 503 `storage_unavailable` | Capacidade de armazenamento temporariamente indisponível; tentar novamente mais tarde. |
+
+Comentários, reações e novas denúncias só são gravados enquanto o vídeo permanece aprovado e ativo. A gravação concorre de forma coordenada com edição, moderação e exclusão; um vídeo que se tornou indisponível retorna 404. Denúncias históricas são preservadas após exclusão. Todos os bloqueios registrados são aplicados no banco antes de paginação e contagens, inclusive acima de mil bloqueados, preservando o acesso administrativo necessário à revisão.
+
+**Revisão:** 31/10/2026. **Estado:** o backend implementa autenticação, perfis, vídeos/mídia, interações, moderação, health e consulta bíblica. A revisão de segurança acima refina esses contratos. Sessões autenticadas continuam com 12 horas; a política persistente e `POST /auth/session/renew` (D004) permanecem planejadas. O registro anterior relata integração com Atlas e `ffprobe` em 29/10; testes locais desta revisão não substituem a verificação do ambiente publicado. Referência: [arquitetura](arquitetura.md) e RF01–RF13 do [escopo](escopo-e-requisitos.md).
 
 ## Convenções
 
@@ -14,7 +28,7 @@ Demais códigos: 401 sem sessão autenticada válida; 403 CSRF inválido ou aç�
 
 Todos os métodos mutáveis exigem cookie e `X-CSRF-Token`; isso inclui rotas públicas de cadastro e login. Sessão sem autenticação não autoriza interações. Respostas de sessão/CSRF/usuário próprio: `Cache-Control: no-store`. O cookie `app_session` é um JWT HS256 HttpOnly; o React não o lê nem o envia em cabeçalho `Authorization`.
 
-**Proteção de recursos implementada:** corpo das rotas atuais limitado a 16 KiB, com 413 em excesso. API, exceto health: 120 requisições/IP/minuto e 1.000 globais/minuto; CSRF: 30/IP/minuto; cadastro: 5/IP/15 minutos; login: 60/IP/15 minutos e 10/IP/conta (ou identificador, se a conta não existe)/15 minutos; consulta bíblica: 60/IP/minuto. Janelas fixas UTC, reserva atômica em armazenamento compartilhado e Retry-After no 429 do Flask. Sucesso também consome orçamento. Proxy pode devolver 413/429 fora do envelope JSON; tratar pelo status. Detalhes e limitações em [segurança](seguranca.md).
+**Proteção de recursos implementada:** corpo limitado a 16 KiB fora do upload; `POST /videos` aceita até 51 MiB de requisição e 50 MiB de arquivo, com 413 em excesso. API, exceto health: 120 requisições/IP/minuto e 1.000 globais/minuto; CSRF: 30/IP/minuto; cadastro: 5/IP/15 minutos; login: 60/IP/15 minutos e 10/IP/conta (ou identificador, se a conta não existe)/15 minutos; consulta bíblica: 60/IP/minuto. Janelas fixas UTC, reserva atômica em armazenamento compartilhado e Retry-After no 429 do Flask. Sucesso também consome orçamento. Proxy pode devolver 413/429 fora do envelope JSON; tratar pelo status. As cotas de armazenamento e pendências são controles adicionais, descritos acima. Detalhes e limitações em [segurança](seguranca.md).
 
 ## Objetos públicos
 
@@ -169,7 +183,7 @@ Todas as rotas das seções 2 a 5 estão implementadas (`app/video_api.py`, `app
 - **Visibilidade:** vídeo pendente, rejeitado, excluído ou de autor bloqueado pelo consultante responde **404** a quem não pode vê-lo. Quem pode ver mas não tem permissão para a ação recebe **403** (ex.: editar vídeo aprovado de outra pessoa). Interações (reação, comentário, denúncia) só existem em vídeo aprovado e visível; em qualquer outro caso a resposta é 404, inclusive para o autor.
 - **Paginação:** `limit` de 1 a 30 (padrão 10) e `cursor` opaco. O cursor só vale para a mesma listagem e os mesmos filtros; outro filtro, cursor adulterado ou parâmetro desconhecido/repetido retorna 400. `has_more` vem de uma busca de `limit + 1` itens, e `next_cursor` é `null` na última página.
 - **Identificadores** malformados na URL ou na query retornam 400.
-- **Publicação** (`POST /videos`): `multipart/form-data` com exatamente um campo `file` (nome terminado em `.mp4`) e os campos `caption`, `category` e, opcionalmente, `bible_reference`; qualquer outro campo é 400. Erros específicos: 415 (tipo ou extensão), 413 (arquivo acima de 50 MiB ou requisição acima de 51 MiB), 422 `invalid_media` (não é MP4 H.264, com áudio AAC opcional, de até 90 s) e 503 `media_unavailable` (sem `ffprobe`; o arquivo nunca é aceito sem validação). Em falha, o arquivo temporário e o já gravado são removidos.
+- **Publicação** (`POST /videos`): `multipart/form-data` com exatamente um campo `file` (nome terminado em `.mp4`) e os campos `caption`, `category` e, opcionalmente, `bible_reference`; qualquer outro campo é 400. Erros específicos: 415 (tipo ou extensão), 413 (arquivo acima de 50 MiB ou requisição acima de 51 MiB), 422 `invalid_media` (não é MP4 H.264, com áudio AAC opcional, de até 90 s) e 503 `media_unavailable` (sem `ffprobe`; o arquivo nunca é aceito sem validação). Aplicam-se também as cotas descritas no início. Falhas antes de mover o arquivo cancelam a tentativa após limpar os temporários. Se a confirmação no banco ficar incerta após mover o arquivo, preservar mídia e reserva para `reconcile-uploads`, sem apagar um vídeo possivelmente confirmado.
 - **Edição** (`PATCH /videos/{id}`): vídeo aprovado volta a pendente e perde a revisão; pendente e rejeitado mantêm o estado.
 - **Exclusão** (`DELETE /videos/{id}`): 204 e invisibilidade imediata; arquivo, reações e comentários são removidos em seguida. Se a limpeza física falhar, o vídeo continua invisível e `flask --app app purge-videos` conclui o trabalho. As denúncias são preservadas.
 - **Mídia** (`GET /videos/{id}/media`): mesma visibilidade do detalhe, suporte a `Range` (206/416) e `Cache-Control: private, no-store`.

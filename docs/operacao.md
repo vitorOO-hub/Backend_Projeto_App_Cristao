@@ -1,5 +1,39 @@
 # Execução local e preparação de EC2 — T03
 
+## Requisitos de consistência do banco
+
+As gravações de interações e as reservas de upload usam transações curtas no MongoDB. É necessário um replica set ou cluster compatível; um servidor standalone não oferece essa garantia. A aplicação deve recusar a operação se a transação não puder ser executada. Não substituir esse controle por consultas e gravações separadas. Nenhuma transação permanece aberta durante recebimento do arquivo ou execução de `ffprobe`.
+
+Criar índices com a credencial operacional antes de iniciar o serviço: `init-auth`, `init-cache` e `init-db`. Conferir a matriz runtime em [segurança](seguranca.md), incluindo os privilégios de `update` usados por reações, bloqueios e seguidores. A credencial operacional não pertence ao ambiente do serviço web.
+
+Testes de concorrência com MongoDB são opt-in por `TEST_MONGODB_URI`, exigem endereço loopback e criam somente bancos novos com prefixo `app_cristao_security_test_` e identificador aleatório. Não fornecer a URI do aplicativo, de demonstração ou do Atlas. O teste remove o banco temporário que ele próprio criou. Testes locais não comprovam permissões, rede ou implantação no Atlas/AWS. A [documentação MongoDB sobre transações](https://www.mongodb.com/docs/languages/python/pymongo-driver/current/crud/transactions/) descreve a configuração e os limites do driver.
+
+## Diagnóstico e limpeza de vídeos excluídos
+
+### Configuração de admissão
+
+| Variável | Padrão | Efeito |
+| --- | --- | --- |
+| `MAX_USER_STORAGE_BYTES` | `1073741824` | 1 GiB por conta, incluindo arquivos excluídos ainda não removidos |
+| `MAX_PENDING_VIDEOS` | `10` | Impede novos envios ao atingir o limite de pendentes e reservas |
+| `MAX_STORAGE_USED_PERCENT` | `80` | Ocupação máxima projetada do volume |
+| `MIN_STORAGE_FREE_BYTES` | `2147483648` | Reserva mínima de 2 GiB livres após a admissão |
+| `UPLOAD_VOLUME_ID` | `local-media` | Identificador estável do volume local usado por todos os workers deste host |
+
+Configurações inválidas impedem a inicialização. Guardar mídia e spool no mesmo volume protegido e fornecer o mesmo identificador a todos os workers. O modelo cobre um host com armazenamento local persistente; adicionar outro host exige revisar a coordenação das travas e do volume. Nenhum valor dessas variáveis vem de requisições dos usuários.
+
+Na localização exata `/api/videos`, o modelo Nginx usa `proxy_request_buffering off` e proxy HTTP/1.1 para encaminhar o corpo à aplicação sem armazená-lo inteiro antes da admissão, inclusive em requisições chunked. Preservar limites de corpo/conexões e coordenar os timeouts com o Gunicorn. A [referência Nginx](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_request_buffering) explica essa dependência. Conferir a configuração efetiva no servidor de destino; o modelo local não demonstra deploy.
+
+### Recuperação de tentativas interrompidas
+
+`flask --app app reconcile-uploads` apenas diagnostica tentativas que podem exigir recuperação. A opção explícita `--apply` tenta recuperar tentativas abandonadas, pula uploads ainda travados por processos ativos e preserva arquivos associados a vídeos já confirmados. Não há liberação de reserva baseada apenas no tempo decorrido. Em falha de banco ou resultado incerto, manter os recursos reservados e repetir o diagnóstico depois de restabelecer o serviço.
+
+### Limpeza de relações
+
+`flask --app app audit-orphans` é somente leitura: informa identificadores de relações cujo vídeo está ausente ou excluído, sem revelar textos de comentários ou motivos de denúncias. Executar o diagnóstico antes de decidir uma intervenção sobre dados existentes.
+
+`flask --app app purge-videos` mantém a limpeza retomável dos vídeos excluídos ainda pendentes. Para rever explicitamente vídeos excluídos já marcados como limpos, usar `flask --app app purge-videos --recheck --limit 50`; a opção `--after <id>` continua a varredura a partir do último identificador examinado. A rechecagem remove somente arquivos, reações e comentários dos tombstones selecionados e preserva denúncias. Preparar e conferir a operação em banco isolado antes de executá-la sobre dados reais.
+
 ## Estado da entrega
 
 Implementados `GET /api/health` e `GET /api/bible/passages`. Também implementados GET `/api/auth/csrf`, POST `/api/users`, POST `/api/auth/login`, POST `/api/auth/logout`, GET/PATCH `/api/me` e GET `/api/users/{id}`; também as rotas de vídeo, interações e moderação. A prova no Atlas de desenvolvimento e com `ffprobe` real foi feita em 29/10/2026; o consumo pelo React segue pendente. Nenhum recurso AWS foi criado e não existe URL pública de API nesta entrega.
@@ -98,7 +132,7 @@ Comandos (`flask --app app <comando>`):
 | `create-admin <e-mail>` | Promove uma conta **já cadastrada** a administrador. Em produção usa `MONGODB_SETUP_URI`. A conta precisa entrar de novo para usar o painel. |
 | `purge-videos` | Conclui a remoção física (arquivo, reações, comentários) de vídeos excluídos cuja limpeza falhou; idempotente e seguro de agendar. |
 
-Fluxo de uma publicação: o arquivo é copiado para uma área temporária em `UPLOAD_DIR/tmp` (interrompido ao passar de 50 MiB), validado com o `ffprobe` (MP4, uma faixa H.264, áudio AAC opcional, até 90 s), movido com nome gerado pelo servidor (`<uuid>.mp4`) e só então registrado no MongoDB. Qualquer falha remove o temporário e o arquivo já movido. O diretório de uploads nunca é servido diretamente.
+Fluxo de uma publicação: reservar recursos antes de ler multipart; receber spool e cópia privada no workspace da tentativa dentro de `UPLOAD_DIR/.upload-leases` (interrompendo a cópia acima de 50 MiB); fechar spools; validar com `ffprobe`; mover para `<uuid>.mp4`; confirmar vídeo e reserva na mesma transação. Falhas anteriores ao movimento limpam temporários e cancelam a reserva. Uma confirmação incerta após o movimento preserva arquivo e reserva para reconciliação explícita. O diretório de uploads nunca é servido diretamente.
 
 No Windows, um arquivo de vídeo ainda aberto por uma resposta em andamento não pode ser apagado; nesse caso a exclusão do vídeo continua valendo (ele fica invisível) e a limpeza física fica para o `purge-videos`.
 
