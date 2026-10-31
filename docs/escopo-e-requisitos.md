@@ -58,7 +58,7 @@ Uma plataforma web responsiva de vídeos curtos cristãos, com feed por categori
 | A | Autenticação no React e no Flask |
 | A+ | Deploy do cliente React na AWS |
 
-**Prazo oficial consultado:** apresentação em 03/11/2026; commits até 07h30 desse dia. Entrega por Blackboard e GitHub. O grupo deve confirmar o fuso do horário com a disciplina.
+**Prazo registrado na consulta anterior, não revalidado em 31/10:** apresentação em 03/11/2026; commits até 07h30 desse dia. Entrega por Blackboard e GitHub. O grupo deve confirmar o fuso do horário com a disciplina.
 
 As contribuições individuais, coautorias quando aplicáveis e avaliações por pares também fazem parte da avaliação. A implementação deve permitir que cada integrante produza contribuições identificáveis.
 
@@ -166,7 +166,7 @@ Para o piloto acadêmico, os MP4 podem ficar em diretório persistente na EC2, c
 
 O limite de duração é de até 90 segundos e só deve ser apresentado como garantido após implementação de validação real. Usar vídeos previamente preparados na demonstração, respeitando os limites técnicos abaixo.
 
-**Refinamento técnico T01 e revisão D004 (v1.2):** adotados arquivo de até 50 MiB, requisição de até 51 MiB e duração de até 90 segundos, com validação ffprobe e armazenamento privado persistente na EC2. Esses controles de mídia foram implementados e verificados em 29/10/2026 com `ffprobe` real. Para RF01, planejar sessão opaca persistente no MongoDB: usuários comuns com 30 dias desde a última renovação válida, limitados a 90 dias desde o login; administradores com 12 horas absolutas, sem extensão automática. Preservar revogação no logout, CSRF e recuperação da identidade pelo React ao reabrir o site. São parâmetros iniciais do piloto, não exigências acadêmicas. O código atual ainda aplica 12 horas a todas as sessões autenticadas; a nova política permanece pendente de implementação e integração. Detalhes e justificativas em [arquitetura](arquitetura.md).
+**Refinamento técnico T01 e revisão D004 (v1.2):** adotados arquivo de até 50 MiB, requisição de até 51 MiB e duração de até 90 segundos, com validação ffprobe e armazenamento privado persistente na EC2. Esses controles de mídia estão implementados; o registro de 29/10/2026 relata verificação com `ffprobe` real, não repetida nesta revisão. Para RF01, o runtime atual usa JWT HS256 em cookie HttpOnly e registro revogável no MongoDB, com 12 horas absolutas. A revisão futura planeja: usuários comuns com 30 dias desde a última renovação válida, limitados a 90 dias desde o login; administradores com 12 horas absolutas, sem extensão automática. Preservar revogação no logout, CSRF e recuperação da identidade pelo React ao reabrir o site. São parâmetros iniciais do piloto, não exigências acadêmicas. O código atual ainda aplica 12 horas a todas as sessões autenticadas; a nova política permanece pendente de implementação e integração. Detalhes e justificativas em [arquitetura](arquitetura.md).
 
 A revisão refina RF01 sem acrescentar login Google/Apple, tela de dispositivos, encerramento remoto de outras sessões, MFA, passkeys, confirmação adicional específica para moderação ou detecção comportamental ao MVP. Suporte a 5.000 usuários simultâneos não é critério de aceite desta entrega.
 
@@ -195,9 +195,9 @@ Implementar timeout, cache e tratamento de referência inválida. A documentaç�
 
 ## 9. Contrato inicial da API
 
-As rotas abaixo são propostas. Detalhar os corpos JSON e respostas antes de implementar; cada operação de negócio deve ter um fluxo correspondente no React.
+As rotas abaixo foram definidas na T01 e já estão implementadas no backend. O [contrato vigente](api.md) detalha corpos, respostas e permissões; cada operação de negócio deve ter consumo e verificação correspondentes no React.
 
-Entradas, respostas, permissões e rotas de suporte foram detalhadas no [contrato API v0.1](api.md) pela T01. O contrato refina esta lista; não significa que as rotas já estejam implementadas.
+A existência de rotas e telas não comprova integração real, persistência atual nem aceite final.
 
 | Métodos | Recurso | Uso |
 | --- | --- | --- |
@@ -286,25 +286,25 @@ Concluir cada funcionalidade com backend, interface e verificação antes de ini
 - [ ] CA14 — Tema e recorte estão validados pelo professor.
 - [ ] CA15 — Demonstração usa contas e conteúdo preparados, e contribuições individuais estão identificáveis.
 
-**Situação em 29/10/2026.** Nenhum item está marcado porque cada critério só se cumpre com o React consumindo a API (e, nos CA12–CA15, com a AWS e o professor). Evidência do backend por critério:
+**Revisão em 31/10/2026.** Os CA finais continuam sem marcação: implementação e testes isolados não substituem as evidências integradas, operacionais e humanas. O registro de 29/10 relatou rotas no Atlas de desenvolvimento e `ffprobe` real; não foi repetido nesta revisão. A base frontend `5d79b9d` já contém autenticação, perfil/lista própria, publicação, moderação/denúncias, feed, Amém e versículo. A branch `feat/fluxos-mvp-locais-20261031` desenvolve as demais interfaces, sujeitas a revisão e merge.
 
-| Critério | Backend | Falta |
+| Critério | Implementação e evidência disponível | Aceite restante |
 | --- | --- | --- |
-| CA01, CA07 | Cadastro, login (e-mail ou usuário), logout, JWT em cookie e papel lido do banco; testes automatizados e fluxo ao vivo no Atlas | Telas React |
-| CA02, CA03 | Publicação com `ffprobe`, fila de moderação, aprovação com motivo e conflito 409, exclusão; verificados ao vivo | Telas de publicar, acompanhar e moderar |
-| CA04, CA05 | Feed por categoria com cursor e mídia com `Range` (206); verificados ao vivo | Feed com `<video>`, controles e alternativa ao autoplay |
-| CA06, CA08 | Reação, comentário, denúncia, resolução e bloqueio; reação, comentário e denúncia verificados ao vivo | Telas e conferência da persistência após recarregar |
-| CA09, CA10 | `GET /bible/passages` com bible-api.com real (João 3:16, Salmos 23:1) e erros tratados | Versículo exibido no vídeo e queda tolerada na tela |
-| CA11 | 633 testes passando (3 falham só no Windows por limite de nome de parâmetro, sem relação com a lógica) | Casos de erro do React |
-| CA12, CA13 | `.env` fora do Git; nenhum recurso AWS criado | Deploy na EC2 e link da API no README |
-| CA14, CA15 | Não é código | Validação do professor (RA06) e roteiro da demonstração |
+| CA01, CA07 | Autenticação e papéis no backend; telas React e testes isolados | Fluxos atuais no navegador e permissões cruzadas |
+| CA02, CA03 | Upload/ffprobe e moderação no backend; publicar/listar/moderar no React | Gestão própria em desenvolvimento; prova integrada de estados e privacidade |
+| CA04, CA05 | Feed paginado/mídia Range no backend; feed/player manual no React | Visitante em desenvolvimento; reprodução e paginação integradas |
+| CA06, CA08 | Interações, perfis e bloqueios no backend; Amém/denúncia/resolução no React | Comentários/bloqueios/perfil em desenvolvimento; persistência e filtros após recarga |
+| CA09, CA10 | Consulta bíblica pelo Flask e versículo no cartão React com erro recuperável | Retorno externo real atual e falha sem impedir o vídeo |
+| CA11 | Auditoria sobre backend `7f9448c` e frontend `5d79b9d`: 682/102 testes, lint/build passaram em 31/10; dados isolados | Verificações das novas interfaces e matriz integrada; não inferir produção |
+| CA12, CA13 | Modelos EC2 e exemplos sem credenciais; nenhum URL AWS verificado | Publicação autorizada, URL no README, controles operacionais e entrega privada |
+| CA14, CA15 | Dependem da equipe e do professor | Aprovação docente, roteiro/ensaio com conteúdo autorizado e contribuições identificáveis |
 
 ## 14. Pendências de decisão
 
 - Registrar aprovação do tema e do recorte pelo professor.
 - Confirmar responsáveis e capacidade de execução do grupo.
-- Implementar as decisões de autenticação, limite de upload e armazenamento persistente já fechadas na T01.
-- Validar provedor bíblico e referências em português.
+- Verificar as decisões implementadas de autenticação/upload no fluxo integrado e configurar armazenamento persistente no destino autorizado.
+- Revalidar o provedor bíblico e as referências em português no roteiro de integração.
 - Registrar URLs públicas após o deploy.
 
 ## 15. Manutenção
@@ -312,3 +312,5 @@ Concluir cada funcionalidade com backend, interface e verificação antes de ini
 Este arquivo, no backend, é a fonte principal do escopo. O frontend deve apontar para ele em seu README, evitando cópias divergentes. Mudanças de escopo devem atualizar requisitos, critérios de aceite, cronograma e versão deste documento.
 
 **Histórico:** v1.1 (19/10/2026): refinamento técnico T01, contratos e limites definidos; nenhum requisito funcional removido e nenhum critério de aceite marcado sem implementação.
+
+**v1.4 (31/10/2026):** conciliação documental com runtime e frontend existente, distinguindo branch em desenvolvimento, provas históricas e aceites pendentes. Sem alteração de requisitos RF/RA ou conclusão de CA.
