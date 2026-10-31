@@ -61,12 +61,25 @@ Usar credenciais diferentes para a aplicação web e as tarefas de inicializaç�
 | rate_limits | find, insert, update; sem remove/drop |
 | bible_cache | find, insert, update; sem drop |
 | videos | find, insert, update; sem remove/drop (exclusão é lógica) |
-| reactions | find, insert, remove; sem update/drop |
+| reactions | find, insert, update, remove; sem drop (`update_one` com upsert exige update e insert) |
 | comments | find, insert, remove; sem update/drop |
 | reports | find, insert, update; sem remove/drop |
-| blocks | find, insert, remove; sem update/drop |
+| blocks | find, insert, update, remove; sem drop (`update_one` com upsert exige update e insert) |
+| follows | find, insert, update, remove; sem drop (`update_one` com upsert exige update e insert) |
+| upload_guards | find, insert, update; sem remove/drop |
+| upload_reservations | find, insert, update; sem remove/drop/TTL; estados terminais preservam o fencing |
 
 Não atribuir `atlasAdmin`, acesso a todos os bancos ou administração de usuários ao runtime. As permissões reais são a união de todos os papéis atribuídos; adicionar um papel restrito não remove permissões amplas existentes. Validar a matriz contra o código e o plano de cluster em banco isolado. Permissão update/remove pode permitir destruição de documentos em caso de comprometimento do processo, mesmo sem drop; backups continuam necessários.
+
+As operações com `upsert` precisam de `update` e `insert`, inclusive quando usam somente `$setOnInsert`. Consultas com `$lookup` precisam de `find` nas coleções consultadas. Transações não substituem os privilégios das operações que contêm. A [referência de privilégios MongoDB](https://www.mongodb.com/docs/manual/reference/privilege-actions/) detalha essas exigências. Conferir os papéis reais em banco isolado; esta matriz não demonstra configuração do Atlas.
+
+## Cotas e recuperação de uploads
+
+O piloto usa um host e um volume local de mídia, identificado por `UPLOAD_VOLUME_ID`. Reservas de conta e volume são compartilhadas entre processos no MongoDB; não há contador privado por worker. Antes de ler multipart, a admissão reserva até 50 MiB da conta e espaço conservador para duas requisições de 51 MiB no volume, cobrindo spool e cópia. O spool multipart permanece no volume protegido. A configuração padrão limita a conta a 1 GiB e impede novos envios com dez pendentes/reservas. A projeção de ocupação deve permanecer em até 80% e manter ao menos 2 GiB livres.
+
+Cada tentativa mantém uma trava de arquivo do sistema operacional. Uma reconciliação não pode liberar a reserva de uma tentativa que ainda mantenha essa trava. Reservas não expiram por TTL: depois de interrupção, a operação explícita de recuperação verifica a trava, o estado no banco e a existência de vídeo confirmado antes de remover temporários ou cancelar a tentativa. Estados terminais impedem uma requisição atrasada de confirmar uma reserva já cancelada. Em resultado de commit incerto, preservar mídia e reserva até reconciliação segura.
+
+Vídeos existentes acima das cotas continuam preservados. Aprovar, editar ou excluir não depende de cota disponível; uma edição pode devolver um aprovado à fila mesmo se houver dez pendentes. A cota de bytes só deixa de considerar o arquivo após remoção física confirmada. Esses controles protegem a admissão de uploads deste serviço; não substituem monitoramento do volume nem configuram armazenamento distribuído entre hosts.
 
 Em production, `init-auth` e `init-cache` exigem **MONGODB_SETUP_URI** com TLS, fornecida apenas ao processo operacional, além da configuração normal. Esses comandos não substituem silenciosamente a credencial operacional pela runtime. `init-auth` cria índices de usuários/sessões, contadores novos e índices legados de `login_attempts`; `init-db` cria os índices de `videos`, `reactions`, `comments`, `reports` e `blocks` e também exige `MONGODB_SETUP_URI` em produção; os registros legados vencem pelo TTL e não são mais usados para limitar novos logins.
 
@@ -92,6 +105,6 @@ Bootstrap: pip 26.2.2. Runtime: certifi 2026.10.19. A atualização local foi ex
 - Conferir lista de acesso de rede, TLS, domínio, proxy, CSP e limites com `nginx -t` e testes de fluxo no servidor autorizado.
 - Demonstrar backup e restauração em destino isolado; separar acesso de administração/backup do runtime, com retenção e perda máxima aceitáveis registradas. Recursos de backup pago exigem escolha explícita do grupo.
 - Registrar eventos sanitizados de 429/503 e acompanhar taxa de criação de usuários/sessões. Não registrar senha, cookie, JWT, `JWT_SECRET`, token CSRF, URI ou corpo completo de autenticação.
-- Auditar novamente novas rotas de upload, exclusão e moderação quando implementadas. Manter a revisão de sessões persistentes como tarefa separada; seu prazo maior não está implementado por estas correções.
+- Repetir a auditoria ao alterar upload, exclusão, interações ou moderação. Manter a revisão de sessões persistentes como tarefa separada; seu prazo maior não está implementado por estas correções.
 
 A conclusão desses itens depende de evidências reais. Este guia e os testes locais não certificam a configuração do Atlas ou a recuperação de um banco publicado.

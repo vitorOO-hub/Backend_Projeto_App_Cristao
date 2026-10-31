@@ -31,3 +31,7 @@ class ReportConflict(Exception):
 
 class UsernameConflict(Exception):
     pass
+
+
+class StorageUnavailable(Exception):
+    pass

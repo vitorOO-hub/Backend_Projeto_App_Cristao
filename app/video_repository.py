@@ -7,6 +7,7 @@ from pymongo import ReturnDocument
 from pymongo.errors import PyMongoError
 
 from app.constants import CATEGORIES, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, VIDEO_STATUSES
+from app.block_filter import unblocked_stages
 from app.errors import DataUnavailable
 from app.videos import EMPTY_REVIEW, METADATA_FIELDS, to_millis
 
@@ -19,16 +20,17 @@ DECISION_FROM = {'approved': ('pending', 'rejected'), 'rejected': ('pending', 'a
 class VideoRepository(Protocol):
     def insert(self, video): ...
     def find_by_id(self, video_id): ...
-    def list_approved(self, *, category=None, author_id=None, exclude_authors=(),
+    def list_approved(self, *, category=None, author_id=None, exclude_authors=(), viewer_id=None,
                       limit=DEFAULT_PAGE_SIZE, after=None): ...
     def list_by_author(self, author_id, *, status=None, limit=DEFAULT_PAGE_SIZE, after=None): ...
-    def find_approved_by_ids(self, video_ids, exclude_authors=()): ...
+    def find_approved_by_ids(self, video_ids, exclude_authors=(), *, viewer_id=None): ...
     def count_approved_by_author(self, author_id): ...
     def list_for_review(self, *, status='pending', limit=DEFAULT_PAGE_SIZE, after=None): ...
     def update_metadata(self, video_id, author_id, fields, at): ...
     def decide(self, video_id, *, expected_updated_at, status, reason, admin_id, at): ...
     def soft_delete(self, video_id, author_id, at): ...
     def list_pending_purge(self, limit=50): ...
+    def list_deleted_for_recheck(self, *, limit=50, after=None): ...
     def mark_purged(self, video_id, at): ...
 
 
@@ -39,6 +41,7 @@ class UnavailableVideoRepository:
     insert = find_by_id = list_approved = list_by_author = list_for_review = _unavailable
     find_approved_by_ids = count_approved_by_author = _unavailable
     update_metadata = decide = soft_delete = list_pending_purge = mark_purged = _unavailable
+    list_deleted_for_recheck = _unavailable
 
 
 def object_id(value):
@@ -70,13 +73,20 @@ def cursor_clause(after, descending):
                     {'created_at': after[0], '_id': {op: after[1]}}]}
 
 
-def fetch_page(collection, query, order, limit, after):
+def fetch_page(collection, query, order, limit, after, *, viewer_id=None,
+               author_field='author_id', visibility=()):
     """Keyset page of `limit` items plus a has_more flag (one extra item is fetched)."""
     limit = page_limit(limit)
     if after is not None:
         query = {'$and': [query, cursor_clause(after, order == NEWEST_FIRST)]}
+    stages = [*unblocked_stages(viewer_id, author_field), *visibility]
     try:
-        items = list(collection.find(query).sort(order).limit(limit + 1))
+        if stages:
+            items = list(collection.aggregate([
+                {'$match': query}, {'$sort': dict(order)}, *stages, {'$limit': limit + 1}
+            ], maxTimeMS=5000))
+        else:
+            items = list(collection.find(query).sort(order).limit(limit + 1))
     except PyMongoError:
         raise DataUnavailable() from None
     return items[:limit], len(items) > limit
@@ -128,9 +138,10 @@ class MongoVideoRepository:
     def page(self, query, order, limit, after):
         return fetch_page(self.videos, query, order, limit, after)
 
-    def list_approved(self, *, category=None, author_id=None, exclude_authors=(),
+    def list_approved(self, *, category=None, author_id=None, exclude_authors=(), viewer_id=None,
                       limit=DEFAULT_PAGE_SIZE, after=None):
-        return self.page(approved_query(category, author_id, exclude_authors), NEWEST_FIRST, limit, after)
+        return fetch_page(self.videos, approved_query(category, author_id, exclude_authors),
+                          NEWEST_FIRST, limit, after, viewer_id=viewer_id)
 
     def list_by_author(self, author_id, *, status=None, limit=DEFAULT_PAGE_SIZE, after=None):
         """The author's own videos in every state (GET /me/videos); never lists deleted ones."""
@@ -139,7 +150,7 @@ class MongoVideoRepository:
             query['status'] = check_status(status)
         return self.page(query, NEWEST_FIRST, limit, after)
 
-    def find_approved_by_ids(self, video_ids, exclude_authors=()):
+    def find_approved_by_ids(self, video_ids, exclude_authors=(), *, viewer_id=None):
         """One page worth of videos by id, with the same visibility as the public feed."""
         ids = [object_id(value) for value in video_ids]
         if len(ids) > MAX_PAGE_SIZE:
@@ -147,7 +158,10 @@ class MongoVideoRepository:
         if not ids:
             return []
         query = {**approved_query(exclude_authors=exclude_authors), '_id': {'$in': ids}}
+        visibility = unblocked_stages(viewer_id)
         try:
+            if visibility:
+                return list(self.videos.aggregate([{'$match': query}, *visibility], maxTimeMS=5000))
             return list(self.videos.find(query))
         except PyMongoError:
             raise DataUnavailable() from None
@@ -229,3 +243,15 @@ class MongoVideoRepository:
         except PyMongoError:
             raise DataUnavailable() from None
         return result.matched_count == 1
+
+    def list_deleted_for_recheck(self, *, limit=50, after=None):
+        """Explicit maintenance pass, including tombstones previously marked purged."""
+        purge_limit(limit)
+        query = {'deleted_at': {'$type': 'date'}}
+        if after is not None:
+            query['_id'] = {'$gt': object_id(after)}
+        try:
+            rows = list(self.videos.find(query).sort('_id', 1).limit(limit + 1))
+        except PyMongoError:
+            raise DataUnavailable() from None
+        return rows[:limit], len(rows) > limit

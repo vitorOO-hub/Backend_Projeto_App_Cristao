@@ -17,10 +17,12 @@ def keys(collection, name):
 
 
 def test_planned_collections_and_unique_index_names():
-    assert set(INDEXES) == {'videos', 'reactions', 'comments', 'reports', 'blocks', 'follows'}
+    assert set(INDEXES) == {'videos', 'reactions', 'comments', 'reports', 'blocks', 'follows',
+                            'upload_guards', 'upload_reservations'}
     names = [name for collection in INDEXES for name in spec(collection)]
     assert len(names) == len(set(names))
-    assert all(name.startswith(collection + '_') for collection in INDEXES for name in spec(collection))
+    assert all(name == '_id_' or name.startswith(collection + '_')
+               for collection in INDEXES for name in spec(collection))
 
 
 def test_video_indexes_serve_feed_author_and_purge():

@@ -29,9 +29,9 @@ def is_admin(user):
     return user is not None and user['role'] == 'admin'
 
 
-def blocked_by(viewer):
-    """Authors the signed-in viewer hides from discovery; visitors hide nobody."""
-    return ext('block_repository').blocked_ids(viewer['_id']) if viewer is not None else []
+def viewer_id(viewer):
+    """Pass identity to the database filter, never a materialized block list."""
+    return viewer['_id'] if viewer is not None else None
 
 
 def load_video(video_id, viewer):
@@ -64,7 +64,7 @@ def serialize_videos(videos, viewer, restricted):
     ids = [video['_id'] for video in videos]
     authors = accounts().find_users_by_ids({video['author_id'] for video in videos})
     reaction_totals = ext('reaction_repository').count_for(ids)
-    comment_totals = ext('comment_repository').count_for(ids, exclude_authors=blocked_by(viewer))
+    comment_totals = ext('comment_repository').count_for(ids, viewer_id=viewer_id(viewer))
     mine = ext('reaction_repository').reacted_by(viewer['_id'], ids) if viewer is not None else set()
     result = []
     for video in videos:

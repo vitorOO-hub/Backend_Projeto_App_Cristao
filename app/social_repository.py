@@ -3,11 +3,13 @@ from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
 from app.constants import DEFAULT_PAGE_SIZE, REPORT_STATUSES
+from app.block_filter import unblocked_stages, visible_reaction_stages
 from app.errors import DataUnavailable, ReportConflict
 from app.video_repository import NEWEST_FIRST, OLDEST_FIRST, approved_query, fetch_page, object_id
 from app.videos import to_millis
 
 MAX_BATCH = 100
+# Explicit exclusion batches are bounded internal inputs, never a user's block list.
 MAX_EXCLUDED = 1000
 
 
@@ -18,14 +20,16 @@ def object_ids(values, limit=MAX_BATCH):
     return [object_id(value) for value in values]
 
 
-def counts(collection, query, ids):
+def counts(collection, query, ids, *, viewer_id=None):
     """Per-video totals for one page of videos in a single aggregation."""
+    visibility = unblocked_stages(viewer_id)
     if not ids:
         return {}
-    pipeline = [{'$match': {**query, 'video_id': {'$in': ids}}},
+    pipeline = [{'$match': {**query, 'video_id': {'$in': ids}}}, *visibility,
                 {'$group': {'_id': '$video_id', 'total': {'$sum': 1}}}]
     try:
-        return {row['_id']: row['total'] for row in collection.aggregate(pipeline)}
+        options = {'maxTimeMS': 5000} if visibility else {}
+        return {row['_id']: row['total'] for row in collection.aggregate(pipeline, **options)}
     except PyMongoError:
         raise DataUnavailable() from None
 
@@ -62,7 +66,7 @@ class UnavailableFollowRepository(UnavailableRepository):
 
 
 class UnavailableBlockRepository(UnavailableRepository):
-    add = remove = list_for = blocked_ids = exists = UnavailableRepository._unavailable
+    add = remove = list_for = exists = UnavailableRepository._unavailable
 
 
 class MongoReactionRepository:
@@ -103,13 +107,21 @@ class MongoReactionRepository:
         except PyMongoError:
             raise DataUnavailable() from None
 
-    def list_by_user(self, user_id, *, limit=DEFAULT_PAGE_SIZE, after=None):
-        """The user's reactions, newest first (profile "Curtidos"); video visibility is the caller's job."""
-        return fetch_page(self.reactions, {'user_id': object_id(user_id)}, NEWEST_FIRST, limit, after)
+    def list_by_user(self, user_id, *, viewer_id=None, limit=DEFAULT_PAGE_SIZE, after=None):
+        """Recent reactions; with a viewer, parent-video visibility is applied before pagination."""
+        visibility = visible_reaction_stages(viewer_id) if viewer_id is not None else []
+        return fetch_page(self.reactions, {'user_id': object_id(user_id)}, NEWEST_FIRST, limit, after,
+                          visibility=visibility)
 
-    def count_by_user(self, user_id):
+    def count_by_user(self, user_id, *, viewer_id=None):
         object_id(user_id)
+        visibility = visible_reaction_stages(viewer_id) if viewer_id is not None else []
         try:
+            if visibility:
+                rows = list(self.reactions.aggregate([
+                    {'$match': {'user_id': user_id}}, *visibility, {'$count': 'total'}
+                ], maxTimeMS=5000))
+                return rows[0]['total'] if rows else 0
             return self.reactions.count_documents({'user_id': user_id})
         except PyMongoError:
             raise DataUnavailable() from None
@@ -157,13 +169,14 @@ class MongoCommentRepository:
         except PyMongoError:
             raise DataUnavailable() from None
 
-    def list_for_video(self, video_id, *, exclude_authors=(), limit=DEFAULT_PAGE_SIZE, after=None):
+    def list_for_video(self, video_id, *, exclude_authors=(), viewer_id=None,
+                       limit=DEFAULT_PAGE_SIZE, after=None):
         """Oldest first; blocked authors are removed before the limit is applied."""
         query = {'video_id': object_id(video_id), **excluding(exclude_authors)}
-        return fetch_page(self.comments, query, OLDEST_FIRST, limit, after)
+        return fetch_page(self.comments, query, OLDEST_FIRST, limit, after, viewer_id=viewer_id)
 
-    def count_for(self, video_ids, exclude_authors=()):
-        return counts(self.comments, excluding(exclude_authors), object_ids(video_ids))
+    def count_for(self, video_ids, exclude_authors=(), *, viewer_id=None):
+        return counts(self.comments, excluding(exclude_authors), object_ids(video_ids), viewer_id=viewer_id)
 
     def delete(self, comment_id, author_id):
         """Only the author removes a comment; returns whether one was removed."""
@@ -253,26 +266,38 @@ class MongoFollowRepository:
             query[other_field] = {'$nin': excluded}
         return query
 
-    def list_followers(self, user_id, *, exclude_users=(), limit=DEFAULT_PAGE_SIZE, after=None):
+    def list_followers(self, user_id, *, exclude_users=(), viewer_id=None,
+                       limit=DEFAULT_PAGE_SIZE, after=None):
         """Who follows `user_id`, newest first; `exclude_users` (e.g. blocked ones) go before the limit."""
         query = self.side('followee_id', user_id, 'follower_id', exclude_users)
-        return fetch_page(self.follows, query, NEWEST_FIRST, limit, after)
+        return fetch_page(self.follows, query, NEWEST_FIRST, limit, after,
+                          viewer_id=viewer_id, author_field='follower_id')
 
-    def list_following(self, user_id, *, exclude_users=(), limit=DEFAULT_PAGE_SIZE, after=None):
+    def list_following(self, user_id, *, exclude_users=(), viewer_id=None,
+                       limit=DEFAULT_PAGE_SIZE, after=None):
         query = self.side('follower_id', user_id, 'followee_id', exclude_users)
-        return fetch_page(self.follows, query, NEWEST_FIRST, limit, after)
+        return fetch_page(self.follows, query, NEWEST_FIRST, limit, after,
+                          viewer_id=viewer_id, author_field='followee_id')
 
-    def count(self, query):
+    def count(self, query, *, viewer_id=None, author_field='author_id'):
+        visibility = unblocked_stages(viewer_id, author_field)
         try:
+            if visibility:
+                rows = list(self.follows.aggregate([
+                    {'$match': query}, *visibility, {'$count': 'total'}
+                ], maxTimeMS=5000))
+                return rows[0]['total'] if rows else 0
             return self.follows.count_documents(query)
         except PyMongoError:
             raise DataUnavailable() from None
 
-    def count_followers(self, user_id, exclude_users=()):
-        return self.count(self.side('followee_id', user_id, 'follower_id', exclude_users))
+    def count_followers(self, user_id, exclude_users=(), *, viewer_id=None):
+        return self.count(self.side('followee_id', user_id, 'follower_id', exclude_users),
+                          viewer_id=viewer_id, author_field='follower_id')
 
-    def count_following(self, user_id, exclude_users=()):
-        return self.count(self.side('follower_id', user_id, 'followee_id', exclude_users))
+    def count_following(self, user_id, exclude_users=(), *, viewer_id=None):
+        return self.count(self.side('follower_id', user_id, 'followee_id', exclude_users),
+                          viewer_id=viewer_id, author_field='followee_id')
 
 
 class MongoBlockRepository:
@@ -298,15 +323,6 @@ class MongoBlockRepository:
 
     def list_for(self, user_id, *, limit=DEFAULT_PAGE_SIZE, after=None):
         return fetch_page(self.blocks, {'user_id': object_id(user_id)}, NEWEST_FIRST, limit, after)
-
-    def blocked_ids(self, user_id, limit=1000):
-        """Everyone this user blocked, to hide their content in discovery queries."""
-        object_id(user_id)
-        try:
-            rows = self.blocks.find({'user_id': user_id}, {'blocked_user_id': 1}).limit(limit)
-            return [row['blocked_user_id'] for row in rows]
-        except PyMongoError:
-            raise DataUnavailable() from None
 
     def exists(self, user_id, blocked_user_id):
         object_id(user_id), object_id(blocked_user_id)

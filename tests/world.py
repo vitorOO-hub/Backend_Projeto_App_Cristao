@@ -1,5 +1,6 @@
 """A complete app wired to in-memory repositories, with signed-in actors that skip scrypt."""
 import io
+from collections import namedtuple
 from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
@@ -9,7 +10,9 @@ from app.auth import digest, issue_token
 from app.storage import LocalStorage
 from app.videos import new_video
 from conftest import FakeAuthRepository
-from fakes import (FakeBlockRepository, FakeCommentRepository, FakeFollowRepository,
+from fakes import (FakeBlockRepository, FakeCommentRepository, FakeFollowRepository, FakeInteractions,
+                   FakeOrphanRepository,
+                   FakeUploadRepository,
                    FakeReactionRepository, FakeReportRepository, FakeVideoRepository)
 
 MP4_BYTES = b'\x00\x00\x00\x18ftypmp42' + b'0' * 200
@@ -64,6 +67,11 @@ class World:
         self.blocks = FakeBlockRepository()
         self.follows = FakeFollowRepository()
         self.reactions.videos = self.videos
+        for repository in (self.videos, self.reactions, self.comments, self.follows):
+            repository.blocks = self.blocks
+        self.interactions = FakeInteractions(self.videos, self.reactions, self.comments, self.reports)
+        self.orphans = FakeOrphanRepository(self.videos, self.reactions, self.comments)
+        self.uploads = FakeUploadRepository(self.videos)
         self.storage = LocalStorage(tmp_path / 'uploads')
         self.time = [datetime(2026, 10, 27, 12, 0, tzinfo=timezone.utc)]
         self.probe_calls, self.probe_result, self.probe_error = [], dict(PROBE_RESULT), None
@@ -73,6 +81,10 @@ class World:
             'AUTH_REPOSITORY': self.auth, 'VIDEO_REPOSITORY': self.videos,
             'REACTION_REPOSITORY': self.reactions, 'COMMENT_REPOSITORY': self.comments,
             'REPORT_REPOSITORY': self.reports, 'BLOCK_REPOSITORY': self.blocks, 'FOLLOW_REPOSITORY': self.follows,
+            'INTERACTIONS_SERVICE': self.interactions, 'ORPHAN_REPOSITORY': self.orphans,
+            'UPLOAD_REPOSITORY': self.uploads,
+            'UPLOAD_CAPACITY_PROBE': lambda: namedtuple('Disk', 'total used free')(100 * 1024**3,
+                                                                                 10 * 1024**3, 90 * 1024**3),
             'STORAGE': self.storage, 'MEDIA_PROBE': self.probe})
         self.serial = 0
 

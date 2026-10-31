@@ -89,7 +89,20 @@ def read_session(at):
     session = repository().find_session(digest(token))
     if session is None or session['expires_at'] <= at:
         return None
+    if session.get('user_id'):
+        user = repository().find_user_by_id(session['user_id'])
+        if not session_matches_user(session, user):
+            return None
     return session
+
+
+def session_matches_user(session, user):
+    """Missing versions are legacy generation zero, never the user's current generation."""
+    if session is None or user is None:
+        return False
+    session_version, user_version = session.get('auth_version', 0), user.get('auth_version', 0)
+    return (type(session_version) is int and type(user_version) is int
+            and session_version >= 0 and session_version == user_version)
 
 
 def require_csrf():
@@ -110,7 +123,8 @@ def require_login(session):
 
 def authenticated_user(session):
     user = repository().find_user_by_id(require_login(session))
-    if user is None:
+    # Recheck the fresh account snapshot: its role may change after read_session().
+    if not session_matches_user(session, user):
         raise ApiError(401, 'unauthenticated', 'Autenticação necessária.')
     return user
 
@@ -125,7 +139,8 @@ def optional_user():
     session = read_session(now())
     if session is None or not session.get('user_id'):
         return None
-    return repository().find_user_by_id(session['user_id'])
+    user = repository().find_user_by_id(session['user_id'])
+    return user if session_matches_user(session, user) else None
 
 
 def require_admin(user):
@@ -229,7 +244,7 @@ def register():
     name, username, email, password = validate_user(json_payload())
     user = {'_id': ObjectId(), 'name': name, 'email_normalized': email,
             'password_hash': generate_password_hash(password, method='scrypt'),
-            'bio': '', 'role': 'user', 'created_at': now()}
+            'bio': '', 'role': 'user', 'auth_version': 0, 'created_at': now()}
     if username is not None:
         user['username_normalized'] = username
     try:
@@ -271,6 +286,7 @@ def login():
     session_token, csrf_token = issue_token(at, ttl, user['_id']), secrets.token_urlsafe(32)
     repository().delete_session(previous['token_hash'])
     repository().insert_session({'token_hash': digest(session_token), 'user_id': user['_id'],
+                                 'auth_version': user.get('auth_version', 0),
                                  'csrf_hash': digest(csrf_token), 'created_at': at,
                                  'expires_at': at + timedelta(seconds=ttl)})
     response = jsonify(data={'user': user_self(user), 'csrf_token': csrf_token})

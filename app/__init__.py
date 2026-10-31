@@ -12,14 +12,19 @@ from werkzeug.exceptions import HTTPException
 from app.bible import BibleService
 from app.cache import MongoCache, SQLiteCache
 from app.db import ensure_indexes
-from app.errors import ApiError, CacheUnavailable, AuthUnavailable, DataUnavailable
+from app.errors import ApiError, CacheUnavailable, AuthUnavailable, DataUnavailable, StorageUnavailable
 from app.auth import auth, configure_auth
 from app.media import probe_video
+from app.interactions import MongoInteractions, UnavailableInteractions
 from app.moderation_api import moderation
-from app.purge import purge_pending
+from app.purge import purge_pending, recheck_deleted
+from app.orphans import MongoOrphanRepository, UnavailableOrphanRepository
+from app.access import parse_id
 from app.profile_api import profile
 from app.social_api import social
 from app.storage import LocalStorage
+from app.upload_request import UploadRequest
+from app.uploads import MongoUploadRepository, UnavailableUploadRepository, UploadManager
 from app.video_api import videos
 from app.auth_repository import MongoAuthRepository, UnavailableAuthRepository
 from app.social_repository import (MongoBlockRepository, MongoCommentRepository,
@@ -34,6 +39,7 @@ from app.security import (MongoRateLimits, SQLiteRateLimits, configure_security,
 
 def create_app(config=None):
     app = Flask(__name__, instance_relative_config=True, static_folder=None)
+    app.request_class = UploadRequest
     app.config.from_mapping(
         APP_ENV=os.getenv("APP_ENV", "development"),
         APP_ORIGIN=os.getenv("APP_ORIGIN", "http://localhost:5173"),
@@ -50,6 +56,11 @@ def create_app(config=None):
         BIBLE_CACHE_TTL_SECONDS=int(os.getenv("BIBLE_CACHE_TTL_SECONDS", "86400")),
         MAX_CONTENT_LENGTH=int(os.getenv("MAX_REQUEST_BYTES", "53477376")),
         MAX_VIDEO_BYTES=int(os.getenv("MAX_VIDEO_BYTES", "52428800")),
+        MAX_USER_STORAGE_BYTES=int(os.getenv('MAX_USER_STORAGE_BYTES', '1073741824')),
+        MAX_PENDING_VIDEOS=int(os.getenv('MAX_PENDING_VIDEOS', '10')),
+        MAX_STORAGE_USED_PERCENT=int(os.getenv('MAX_STORAGE_USED_PERCENT', '80')),
+        MIN_STORAGE_FREE_BYTES=int(os.getenv('MIN_STORAGE_FREE_BYTES', '2147483648')),
+        UPLOAD_VOLUME_ID=os.getenv('UPLOAD_VOLUME_ID', 'local-media'),
         UPLOAD_DIR=os.getenv("UPLOAD_DIR", "instance/uploads"),
         FFPROBE_PATH=os.getenv("FFPROBE_PATH", "ffprobe"),
         CACHE_SQLITE_PATH=str(Path(app.instance_path) / "bible-cache.sqlite3"),
@@ -87,6 +98,12 @@ def create_app(config=None):
     app.extensions['rate_limits'] = app.config.get('RATE_LIMITS') or (
         MongoRateLimits(mongo[app.config['MONGODB_DATABASE']]['rate_limits']) if mongo is not None
         else SQLiteRateLimits(Path(app.config['CACHE_SQLITE_PATH']).with_name('rate-limits.sqlite3')))
+    app.extensions['interactions_service'] = app.config.get('INTERACTIONS_SERVICE') or (
+        MongoInteractions(mongo[app.config['MONGODB_DATABASE']]) if mongo is not None
+        else UnavailableInteractions())
+    app.extensions['orphan_repository'] = app.config.get('ORPHAN_REPOSITORY') or (
+        MongoOrphanRepository(mongo[app.config['MONGODB_DATABASE']]) if mongo is not None
+        else UnavailableOrphanRepository())
     app.before_request(protect_requests)
     app.register_blueprint(auth)
     app.register_blueprint(videos)
@@ -97,6 +114,11 @@ def create_app(config=None):
     if not upload_dir.is_absolute():
         upload_dir = Path(app.root_path).parent / upload_dir
     app.extensions["storage"] = app.config.get("STORAGE") or LocalStorage(upload_dir)
+    app.extensions['upload_repository'] = app.config.get('UPLOAD_REPOSITORY') or (
+        MongoUploadRepository(mongo[app.config['MONGODB_DATABASE']]) if mongo is not None
+        else UnavailableUploadRepository())
+    app.extensions['upload_manager'] = UploadManager(app.extensions['storage'], app.extensions['upload_repository'],
+                                                     app.config, app.config.get('UPLOAD_CAPACITY_PROBE'))
     app.extensions["media_probe"] = app.config.get("MEDIA_PROBE") or partial(
         probe_video, ffprobe_path=app.config["FFPROBE_PATH"])
     cache = app.config.get("BIBLE_CACHE")
@@ -141,6 +163,14 @@ def create_app(config=None):
     @app.errorhandler(DataUnavailable)
     def data_unavailable(error):
         return jsonify(error={"code": "data_unavailable", "message": "Serviço temporariamente indisponível."}), 503
+
+    @app.errorhandler(StorageUnavailable)
+    def storage_unavailable(error):
+        response = jsonify(error={'code': 'storage_unavailable',
+                                   'message': 'O armazenamento de vídeos está temporariamente indisponível. Tente novamente mais tarde.'})
+        response.status_code = 503
+        response.headers['Retry-After'] = '60'
+        return response
 
     @app.errorhandler(HTTPException)
     def http_error(error):
@@ -208,13 +238,58 @@ def create_app(config=None):
         click.echo("Conta promovida a administrador. Ela precisa entrar de novo para usar o painel.")
 
     @app.cli.command("purge-videos")
-    def purge_videos():
+    @click.option('--recheck', is_flag=True, help='Rever também vídeos excluídos já marcados como limpos.')
+    @click.option('--limit', type=click.IntRange(1, 100), default=50, show_default=True)
+    @click.option('--after', help='Cursor hexadecimal de continuação da revisão explícita.')
+    def purge_videos(recheck, limit, after):
         """Finish the physical removal of deleted videos (file, reactions and comments)."""
         try:
-            done = purge_pending()
-        except (DataUnavailable, OSError):
+            if after is not None and not recheck:
+                raise click.ClickException('Use --after somente com --recheck.')
+            done, cursor = (recheck_deleted(limit, parse_id(after) if after else None) if recheck
+                            else (purge_pending(limit), None))
+        except (DataUnavailable, OSError, ApiError):
             raise click.ClickException("Não foi possível concluir a limpeza; tente novamente.") from None
         click.echo(f"Vídeos limpos: {done}.")
+        if cursor:
+            click.echo(f'Próximo cursor: {cursor}')
+
+    @app.cli.command('audit-orphans')
+    @click.option('--collection', 'collection_name', type=click.Choice(['comments', 'reactions']),
+                  help='Diagnosticar somente esta coleção; necessário para continuar com --after.')
+    @click.option('--limit', type=click.IntRange(1, 100), default=50, show_default=True)
+    @click.option('--after', help='Listar relações com _id maior que este cursor hexadecimal.')
+    def audit_orphans(collection_name, limit, after):
+        """Diagnose orphan comments/reactions without changing files or records."""
+        try:
+            if after is not None and collection_name is None:
+                raise click.ClickException('Use --collection ao continuar um diagnóstico com --after.')
+            cursor = parse_id(after) if after else None
+            for name in ([collection_name] if collection_name else ('comments', 'reactions')):
+                rows, more = app.extensions['orphan_repository'].list_for(name, limit=limit, after=cursor)
+                click.echo(f'{name}: {len(rows)} órfãos nesta página.')
+                for row in rows:
+                    click.echo(f'  id={row["_id"]} video_id={row["video_id"]}')
+                if more:
+                    click.echo(f'  Próximo cursor ({name}): {rows[-1]["_id"]}')
+        except (DataUnavailable, ApiError):
+            raise click.ClickException('Não foi possível concluir o diagnóstico.') from None
+
+    @app.cli.command('reconcile-uploads')
+    @click.option('--apply', is_flag=True, help='Recuperar explicitamente envios interrompidos; sem esta opção, somente diagnóstico.')
+    @click.option('--limit', type=click.IntRange(1, 100), default=50, show_default=True)
+    @click.option('--after', help='Cursor UUID hexadecimal de continuação.')
+    def reconcile_uploads(apply, limit, after):
+        """Diagnose upload workspaces; active process locks are always preserved."""
+        try:
+            rows, cursor = app.extensions['upload_manager'].reconcile(apply=apply, limit=limit, after=after)
+            click.echo('Aplicação explícita.' if apply else 'Somente diagnóstico; nenhum arquivo ou registro alterado.')
+            for identity, state in rows:
+                click.echo(f'{identity}: {state}')
+            if cursor:
+                click.echo(f'Próximo cursor: {cursor}')
+        except (DataUnavailable, StorageUnavailable, ValueError):
+            raise click.ClickException('Não foi possível reconciliar os envios. Nenhum envio ativo será liberado.') from None
 
     @app.cli.command("init-db")
     def init_db():

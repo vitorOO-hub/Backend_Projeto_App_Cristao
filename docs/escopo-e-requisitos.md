@@ -115,6 +115,14 @@ As contribuições individuais, coautorias quando aplicáveis e avaliações por
 
 ### Regras de negócio
 
+Refinamentos de segurança adotados em 31/10/2026 para o piloto:
+
+- Mudanças operacionais de papel invalidam as sessões anteriores; o usuário precisa entrar novamente. A revogação deve continuar válida mesmo se a limpeza dos registros antigos falhar.
+- Novos uploads exigem cota disponível: até 1 GiB de arquivos por conta em todos os estados, incluindo excluídos ainda não removidos fisicamente. Ao atingir dez pendentes, considerando reservas de uploads, novos envios são recusados. Edição e exclusão continuam permitidas; arquivos existentes acima do limite são preservados.
+- A admissão reserva recursos antes de receber o multipart e considera envios simultâneos. O volume de mídia deve manter ao menos 2 GiB livres e não ultrapassar 80% de ocupação projetada. São parâmetros iniciais configuráveis, não critérios acadêmicos adicionais.
+- A gravação de uma interação precisa ser coordenada com a disponibilidade do vídeo: nenhuma nova interação é confirmada após a exclusão. Denúncias já registradas são preservadas para auditoria.
+- Todos os bloqueios registrados devem ser considerados antes da paginação e das contagens; não truncar silenciosamente em mil contas. O acesso administrativo necessário à revisão continua disponível.
+
 - Visitantes podem assistir a vídeos aprovados e consultar suas passagens bíblicas. Publicar e interagir exige autenticação.
 - Usuários não podem alterar publicações ou comentários de terceiros.
 - Somente administradores executam ações de moderação.

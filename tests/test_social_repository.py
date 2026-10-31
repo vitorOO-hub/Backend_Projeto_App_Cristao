@@ -184,9 +184,6 @@ def test_block_listing_and_lookups(blocks):
     blocks.blocks.find.assert_called_once_with({'user_id': USER})
     blocks.blocks.find.return_value.sort.assert_called_once_with(NEWEST_FIRST)
     blocks.blocks.find.reset_mock()
-    blocks.blocks.find.return_value.limit.return_value = [{'blocked_user_id': OTHER}]
-    assert blocks.blocked_ids(USER) == [OTHER]
-    blocks.blocks.find.assert_called_once_with({'user_id': USER}, {'blocked_user_id': 1})
     blocks.blocks.count_documents.return_value = 1
     assert blocks.exists(USER, OTHER)
     blocks.blocks.count_documents.return_value = 0
@@ -233,7 +230,7 @@ def test_database_errors_are_controlled(reactions, comments, reports, blocks, er
              lambda: reports.find_by_id(ITEM), lambda: reports.list_by_status(),
              lambda: reports.resolve(ITEM, note='Revisado e mantido', admin_id=ADMIN, at=AT),
              lambda: blocks.add(USER, OTHER, AT), lambda: blocks.remove(USER, OTHER),
-             lambda: blocks.list_for(USER), lambda: blocks.blocked_ids(USER), lambda: blocks.exists(USER, OTHER)]
+             lambda: blocks.list_for(USER), lambda: blocks.exists(USER, OTHER)]
     for call in calls:
         with pytest.raises(DataUnavailable) as raised:
             call()
