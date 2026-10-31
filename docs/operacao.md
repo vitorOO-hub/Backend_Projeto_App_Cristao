@@ -1,10 +1,12 @@
-# Execução local e preparação de EC2 — T03
+# Execução local e preparação de EC2
 
 ## Estado da entrega
 
-Implementados `GET /api/health` e `GET /api/bible/passages`. Também implementados GET `/api/auth/csrf`, POST `/api/users`, POST `/api/auth/login`, POST `/api/auth/logout`, GET/PATCH `/api/me` e GET `/api/users/{id}`; também as rotas de vídeo, interações e moderação. A prova no Atlas de desenvolvimento e com `ffprobe` real foi feita em 29/10/2026; o consumo pelo React segue pendente. Nenhum recurso AWS foi criado e não existe URL pública de API nesta entrega.
+Backend implementa health, consulta bíblica, autenticação/perfis, vídeos, interações e moderação. Frontend base `5d79b9d` já consome autenticação, perfil/lista própria, publicação, moderação/denúncias, feed, Amém e versículo. As interfaces complementares estão em desenvolvimento na branch `feat/fluxos-mvp-locais-20261031`; verificar revisão/merge antes de tratá-las como disponíveis na `main`.
 
-**Planejamento revisado em 24/10/2026:** sessões comuns terão renovação controlada, janela de 30 dias e limite absoluto de 90 dias; administradores continuarão com 12 horas absolutas. Essa revisão ainda não está no código. As instruções executáveis abaixo usam a configuração atual, incluindo os controles de acesso do [contrato API v0.6](api.md). Ver [arquitetura](arquitetura.md).
+O registro de 29/10/2026 relata prova Atlas de desenvolvimento/ffprobe real, não repetida na revisão documental de 31/10. Não há evidência de integração atual completa React–Flask–Atlas nem URL pública verificada nesta entrega. Nenhum recurso AWS foi criado por esta atualização. Sessão atual: JWT HS256 em cookie HttpOnly, registro revogável no servidor e 12 horas absolutas.
+
+**Planejamento revisado em 24/10/2026:** sessões comuns terão renovação controlada, janela de 30 dias e limite absoluto de 90 dias; administradores continuarão com 12 horas absolutas. Essa revisão ainda não está no código. As instruções executáveis abaixo usam a configuração atual, incluindo os controles de acesso do [contrato da API](api.md). Ver [arquitetura](arquitetura.md).
 
 ## Preparar ambiente local
 
@@ -45,7 +47,7 @@ Os testes são offline e não escrevem em banco real. A prova real é opt-in, us
 
 `health` comprova somente processo/rota; não consulta cache, Atlas ou API externa. `flask --app app init-cache` verifica o backend de cache e cria explicitamente o índice TTL no MongoDB quando configurado. A expiração é checada nas consultas, sem esperar a limpeza TTL.
 
-## Configuração consumida nesta T03
+## Configuração consumida pelo runtime
 
 `APP_ENV`, `MONGODB_URI`, `MONGODB_DATABASE`, `BIBLE_API_BASE_URL` (fixa em `https://bible-api.com`), `BIBLE_CONNECT_TIMEOUT_SECONDS`, `BIBLE_READ_TIMEOUT_SECONDS`, `BIBLE_CACHE_TTL_SECONDS` e `MAX_REQUEST_BYTES` são lidas pela factory. Sem URI e fora de produção, o cache usa SQLite em `instance`.
 
@@ -58,20 +60,20 @@ Tradução é restrita a `almeida`; não aceitar provedor/URL enviados na query.
 Arquivos disponíveis:
 
 - `deploy/app-cristao.service`: modelo systemd com usuário dedicado, ambiente externo e Gunicorn em loopback.
-- `deploy/nginx.conf.example`: modelo mesma origem com HTTPS, proxy `/api`, limites de taxa/conexões e corpo padrão de 16 KiB. A futura rota de upload precisará de exceção explícita de 51 MiB no proxy e Flask. Não publica arquivos de upload.
+- `deploy/nginx.conf.example`: modelo mesma origem com HTTPS, proxy `/api`, limites de taxa/conexões e corpo padrão de 16 KiB. A localização exata `/api/videos` já contém exceção de 51 MiB, compatível com o Flask; somente o arquivo tem limite de 50 MiB. Não publica arquivos de upload.
 - `gunicorn.conf.py`: dois workers, timeout de 30 segundos e sem access log com parâmetros de consulta.
 
-Os modelos não foram instalados no sistema. Nginx/HTTPS e frontend ainda não estão disponíveis localmente para validação integral. Só ativar o serviço depois de adaptar e conferir os arquivos no servidor autorizado.
+Os modelos não foram instalados no sistema. Esta revisão não executou Nginx/HTTPS nem validou o sistema integrado. Só ativar o serviço depois de adaptar e conferir os arquivos no servidor autorizado.
 
 ### Pré-requisitos no servidor já autorizado
 
 1. Instância EC2 acessível, Python 3.12, Nginx, usuário de serviço `appcristao`, domínio e certificado HTTPS. Abrir somente as portas necessárias; Gunicorn permanece em `127.0.0.1:8000`.
 2. Backend em `/srv/app-cristao/backend`; criar virtualenv, instalar `requirements-bootstrap.txt` com `--no-deps` e depois `requirements.txt`. Executar testes em ambiente separado antes de publicar.
 3. MongoDB Atlas com usuário restrito ao banco do projeto e acesso de rede autorizado para a EC2. Não desabilitar TLS para resolver falhas de conexão.
-4. Criar `/var/lib/app-cristao` pertencente ao usuário do serviço, para uploads futuros. Código permanece separado dos dados persistentes.
+4. Criar `/var/lib/app-cristao` pertencente ao usuário do serviço, para mídia persistente. Código permanece separado dos dados persistentes.
 5. Guardar ambiente em `/etc/app-cristao/backend.env`, legível apenas por root/serviço conforme a configuração operacional. Não usar exemplo como credencial real. Configurar `APP_ENV=production`, `MONGODB_URI` runtime restrita e banco dedicado; `mongodb://` exige TLS explícito e `mongodb+srv://` não pode desativá-lo. `APP_ORIGIN=https://seu-dominio`, `SESSION_COOKIE_SECURE=true`, `JWT_SECRET` aleatório de pelo menos 32 bytes, o mesmo para os dois workers (`python -c "import secrets; print(secrets.token_urlsafe(32))"`), e `TRUSTED_PROXY_IPS=127.0.0.1,::1` para o Nginx local. Não disponibilizar a credencial de inicialização ao serviço web.
-6. Antes de ativar o serviço, carregar ambiente operacional restrito com `MONGODB_SETUP_URI` separada e TLS; executar `flask --app app init-auth` e `flask --app app init-cache`. Retirar o segredo desse contexto após os comandos. Administradores só são criados por linha de comando, com a mesma credencial: `flask --app app set-role email@exemplo.com admin` (ou `user` para rebaixar). A conta precisa existir (cadastro normal pelo app); o comando encerra as sessões dela, então o papel novo vale a partir do próximo login. A API nunca altera papéis. Em produção, sua ausência impede inicialização de índices com a credencial runtime. Não copiar URI em logs, comandos compartilhados ou commits.
-7. Adaptar domínio/certificados no exemplo Nginx; publicar build React somente quando existir. Validar com `nginx -t` e `systemd-analyze verify` no servidor, após os caminhos estarem instalados. O redirecionamento HTTP exige certificado previamente provisionado; este modelo não automatiza sua emissão.
+6. Antes de ativar o serviço, carregar ambiente operacional restrito com `MONGODB_SETUP_URI` separada e TLS; executar `flask --app app init-auth`, `flask --app app init-db` e `flask --app app init-cache`. Retirar o segredo desse contexto após os comandos. Administradores só são criados por linha de comando, com a mesma credencial: `flask --app app set-role email@exemplo.com admin` (ou `user` para rebaixar). A conta precisa existir (cadastro normal pelo app); o comando encerra as sessões dela, então o papel novo vale a partir do próximo login. A API nunca altera papéis. Em produção, sua ausência impede inicialização de índices com a credencial runtime. Não copiar URI em logs, comandos compartilhados ou commits.
+7. Adaptar domínio/certificados no exemplo Nginx; gerar e conferir o build React no repositório frontend antes da publicação. Validar com `nginx -t` e `systemd-analyze verify` no servidor, após os caminhos estarem instalados. O redirecionamento HTTP exige certificado previamente provisionado; este modelo não automatiza sua emissão.
 8. Instalar unidade, recarregar systemd e iniciar somente após validação. Verificar health, uma passagem real e a segunda consulta em cache. Confirmar a coleção no Atlas sem divulgar URI. Documentar URL pública no README.
 
 ### Checklist de implantação pendente
@@ -80,7 +82,7 @@ Os modelos não foram instalados no sistema. Nginx/HTTPS e frontend ainda não e
 - [ ] Credenciais Atlas configuradas por canal privado e conectividade verificada.
 - [ ] Modelos adaptados e validados no servidor de destino.
 - [ ] Backend acessível publicamente; link real no README.
-- [ ] Frontend implementado/publicado e fluxo completo verificado (T12).
+- [ ] Build React publicado e fluxo completo verificado no destino (T12).
 
 O custo e a autorização de recursos continuam sob controle do usuário; este documento não executa provisionamento. Preparar esses arquivos atende à parte de preparação da T03, sem concluir RA05 ou CA12.
 
@@ -88,7 +90,7 @@ O custo e a autorização de recursos continuam sob controle do usuário; este d
 
 Variáveis consumidas: `UPLOAD_DIR` (padrão `instance/uploads`, relativo à raiz do backend; em produção, um volume persistente fora do código, como `/var/lib/app-cristao/uploads`, pertencente ao usuário do serviço), `MAX_VIDEO_BYTES` (50 MiB), `MAX_REQUEST_BYTES` (51 MiB, limite do corpo somente na rota de upload) e `FFPROBE_PATH`. `MAX_VIDEO_SECONDS` documenta o limite de 90 s, que o código aplica por constante.
 
-**ffprobe é obrigatório para publicar.** Sem ele, `POST /api/videos` retorna 503 `media_unavailable` e nenhum arquivo é aceito. Instalar o FFmpeg (que inclui o `ffprobe`) e conferir com `ffprobe -version`: no Windows, por exemplo, `winget install Gyan.FFmpeg`; na EC2 (Amazon Linux/Ubuntu), pelo gerenciador de pacotes. Se o executável não estiver no `PATH`, apontar `FFPROBE_PATH` para ele. O Gunicorn tem timeout de 30 s; uploads lentos ou muito grandes podem exigir ajuste coordenado com o `proxy_read_timeout` do Nginx.
+**ffprobe é obrigatório para publicar.** Sem ele, `POST /api/videos` retorna 503 `media_unavailable` e nenhum arquivo é aceito. Instalar o FFmpeg (que inclui o `ffprobe`) e conferir com `ffprobe -version`: no Windows, por exemplo, `winget install Gyan.FFmpeg`; na EC2 (Amazon Linux/Ubuntu), pelo gerenciador de pacotes. Se o executável não estiver no `PATH`, apontar `FFPROBE_PATH` para ele. O modelo Gunicorn tem timeout de 30 s; o Nginx permite 60 s de leitura/corpo na localização de upload (30 s de leitura no restante da API), e o cliente React aguarda até 120 s para FormData. Esses valores não garantem que um upload lento será aceito. Medir e ajustar os limites em conjunto no destino autorizado, incluindo comportamento de falha, antes de prometer suporte a arquivos no limite.
 
 Comandos (`flask --app app <comando>`):
 
@@ -96,7 +98,7 @@ Comandos (`flask --app app <comando>`):
 | --- | --- |
 | `init-auth`, `init-cache`, `init-db` | Índices de contas/sessões/limites, cache e coleções do produto. Em produção exigem `MONGODB_SETUP_URI`. |
 | `create-admin <e-mail>` | Promove uma conta **já cadastrada** a administrador. Em produção usa `MONGODB_SETUP_URI`. A conta precisa entrar de novo para usar o painel. |
-| `purge-videos` | Conclui a remoção física (arquivo, reações, comentários) de vídeos excluídos cuja limpeza falhou; idempotente e seguro de agendar. |
+| `purge-videos` | Conclui a remoção física (arquivo, reações, comentários) de vídeos excluídos cuja limpeza falhou; idempotente; executar apenas no ambiente autorizado, conferindo o escopo. Nenhum agendamento é criado por este guia. |
 
 Fluxo de uma publicação: o arquivo é copiado para uma área temporária em `UPLOAD_DIR/tmp` (interrompido ao passar de 50 MiB), validado com o `ffprobe` (MP4, uma faixa H.264, áudio AAC opcional, até 90 s), movido com nome gerado pelo servidor (`<uuid>.mp4`) e só então registrado no MongoDB. Qualquer falha remove o temporário e o arquivo já movido. O diretório de uploads nunca é servido diretamente.
 
@@ -133,3 +135,31 @@ Implementar em conjunto política de sessão, persistência, renovação, config
 - Antes do aceite, executar testes isolados e verificar React–Flask–Atlas, cookie HTTPS, expiração e revogação no ambiente publicado. Registrar evidências próprias; esta documentação não comprova implantação ou capacidade para 5.000 usuários simultâneos.
 
 Gestão remota de dispositivos, OAuth, MFA, passkeys e confirmação adicional específica para moderação ficam para evolução posterior.
+
+## Preparação local da versão candidata e retorno
+
+Esta seção prepara o procedimento; não instala serviços, cria recursos ou executa integração. Usar [verificação local](verificacao-local.md) e [roteiro de demonstração](roteiro-demonstracao.md) antes de propor publicação.
+
+### Inventário a conferir antes da autorização
+
+| Elemento | Modelo/caminho previsto | Verificação pendente no destino |
+| --- | --- | --- |
+| Backend e virtualenv | `/srv/app-cristao/backend` e `.venv` | SHA revisado, dependências fixadas, permissões de leitura/execução do usuário `appcristao` |
+| Frontend | `/srv/app-cristao/frontend/dist` | Build das mesmas fontes revisadas, fallback SPA e `/api` na mesma origem |
+| Serviço | [modelo systemd](../deploy/app-cristao.service) | `EnvironmentFile=/etc/app-cristao/backend.env`, Gunicorn em loopback e diretório de trabalho válidos |
+| Mídia | `UPLOAD_DIR=/var/lib/app-cristao/uploads` | Volume persistente fora do código, espaço/limites, acesso do serviço e ffprobe; nenhum alias público |
+| Proxy | [modelo Nginx](../deploy/nginx.conf.example) | Domínio/certificado reais, proxy confiável, limites 16 KiB/51 MiB, HTTPS e Range por rota autorizada |
+| Banco | `MONGODB_URI` runtime; `MONGODB_SETUP_URI` somente operacional | TLS/rede e privilégios por coleção; índices de auth/cache/produto criados explicitamente pelo responsável |
+| Sessão | `JWT_SECRET`, `APP_ORIGIN`, cookies Secure | Mesma chave por worker, origem HTTPS e TTL atual de 12h; não imprimir segredos nos registros |
+
+Conferir os artefatos e o diff local não valida Nginx/systemd no servidor. Após instalação autorizada, os responsáveis deverão executar `nginx -t` e `systemd-analyze verify` com os caminhos reais. Não executar os comandos `init-auth`, `init-db`, `init-cache`, `set-role` ou `purge-videos` contra um banco operacional apenas para validar documentação.
+
+### Procedimento de retorno preparado
+
+1. Antes de publicar, registrar SHAs dos dois repositórios, dependências, configuração revisada sem valores secretos, localização da mídia e versão anterior conhecida. Preservar os artefatos de build correspondentes às duas versões.
+2. Confirmar com o responsável a compatibilidade da versão anterior com os dados atuais e a existência de backup/recuperação verificados em ambiente isolado. Alteração de aplicação não autoriza restaurar banco nem apagar/migrar dados.
+3. Se a candidata falhar, limitar a exposição pelo procedimento aprovado do destino e registrar o erro sem segredos. Retornar somente código/build/configuração à versão revisada anterior, mantendo `UPLOAD_DIR`, banco e segredos operacionais intactos. Não usar reset/limpeza do diretório de dados como retorno.
+4. Revalidar processo/health, entrega do frontend, sessão/permissões, reprodução privada e persistência pelo roteiro autorizado. Health sozinho não comprova recuperação. Registrar versões efetivas e resultado.
+5. Se os dados forem incompatíveis ou a falha exigir restauração, interromper a troca e acionar o responsável pelo plano de recuperação; ensaiar restauração apenas em base isolada antes de qualquer decisão operacional.
+
+Nenhuma dessas ações foi executada nesta preparação. A confirmação final de TLS, índices/privilégios, concorrência MongoDB entre workers, persistência após reinício e restauração isolada continua pendente de ambiente autorizado.
