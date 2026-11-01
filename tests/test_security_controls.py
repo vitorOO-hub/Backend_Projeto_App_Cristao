@@ -7,8 +7,8 @@ from bson import ObjectId
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from app import create_app
-from app.errors import AuthUnavailable
-from app.security import (MongoRateLimits, SQLiteRateLimits, configure_security,
+from app.core.errors import AuthUnavailable
+from app.core.security import (MongoRateLimits, SQLiteRateLimits, configure_security,
                           consume_budget)
 
 JWT_SECRET = 's' * 32
@@ -30,7 +30,7 @@ def test_anonymous_session_creation_is_bounded(setup):
 def test_signup_budget_precedes_password_hash_and_write(setup):
     _, client, repo, _ = setup
     headers = csrf(client)
-    with patch('app.auth.generate_password_hash', return_value='synthetic') as hashing:
+    with patch('app.api.auth.generate_password_hash', return_value='synthetic') as hashing:
         for n in range(5):
             assert client.post('/api/users', headers=headers, json={
                 'name': 'Synthetic user', 'email': f'audit{n}@example.com',
@@ -77,8 +77,8 @@ def test_concurrent_login_never_checks_more_passwords_than_budget(setup):
         return concurrent.post('/api/auth/login', headers=headers,
             json={'email': 'unknown@example.com', 'password': 'audit-wrong-password'}).status_code
 
-    with patch('app.auth.dummy_hash', return_value='synthetic'), \
-         patch('app.auth.check_password_hash', return_value=False) as check:
+    with patch('app.api.auth.dummy_hash', return_value='synthetic'), \
+         patch('app.api.auth.check_password_hash', return_value=False) as check:
         with ThreadPoolExecutor(max_workers=12) as pool:
             codes = list(pool.map(attempt, range(12)))
     assert codes.count(401) == 10

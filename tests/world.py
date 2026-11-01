@@ -6,9 +6,9 @@ from datetime import datetime, timedelta, timezone
 from bson import ObjectId
 
 from app import create_app
-from app.auth import digest, issue_token
-from app.storage import LocalStorage
-from app.videos import new_video
+from app.api.auth import digest, issue_token
+from app.services.storage import LocalStorage
+from app.domain.videos import new_video
 from conftest import FakeAuthRepository
 from fakes import (FakeBlockRepository, FakeCommentRepository, FakeFollowRepository, FakeInteractions,
                    FakeOrphanRepository,

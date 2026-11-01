@@ -8,11 +8,11 @@ from pathlib import Path
 import pytest
 
 from app import create_app
-from app.errors import ApiError, StorageUnavailable
-from app.purge import purge_pending
-from app.upload_files import LeaseBusy, UploadLease
-from app.uploads import ACTIVE, UploadPolicy
-from app.videos import new_video
+from app.core.errors import ApiError, StorageUnavailable
+from app.services.purge import purge_pending
+from app.services.upload_files import LeaseBusy, UploadLease
+from app.services.uploads import ACTIVE, UploadPolicy
+from app.domain.videos import new_video
 from world import MP4_BYTES, PROBE_RESULT
 
 Disk = namedtuple('Disk', 'total used free')

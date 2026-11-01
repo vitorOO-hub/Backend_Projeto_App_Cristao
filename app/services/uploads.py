@@ -6,12 +6,12 @@ from uuid import uuid4
 
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
-from app.auth import now
-from app.errors import ApiError, DataUnavailable, StorageUnavailable
-from app.transactions import MongoTransactions
-from app.upload_files import LeaseBusy, UploadLease, lease_page
-from app.video_repository import object_id
-from app.videos import to_millis
+from app.api.auth import now
+from app.core.errors import ApiError, DataUnavailable, StorageUnavailable
+from app.repositories.transactions import MongoTransactions
+from app.services.upload_files import LeaseBusy, UploadLease, lease_page
+from app.repositories.videos import object_id
+from app.domain.videos import to_millis
 
 ACTIVE = ('reserved', 'recovering')
 

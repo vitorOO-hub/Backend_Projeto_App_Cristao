@@ -2,11 +2,11 @@
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
-from app.constants import DEFAULT_PAGE_SIZE, REPORT_STATUSES
-from app.block_filter import unblocked_stages, visible_reaction_stages
-from app.errors import DataUnavailable, ReportConflict
-from app.video_repository import NEWEST_FIRST, OLDEST_FIRST, approved_query, fetch_page, object_id
-from app.videos import to_millis
+from app.core.constants import DEFAULT_PAGE_SIZE, REPORT_STATUSES
+from app.repositories.block_filter import unblocked_stages, visible_reaction_stages
+from app.core.errors import DataUnavailable, ReportConflict
+from app.repositories.videos import NEWEST_FIRST, OLDEST_FIRST, approved_query, fetch_page, object_id
+from app.domain.videos import to_millis
 
 MAX_BATCH = 100
 # Explicit exclusion batches are bounded internal inputs, never a user's block list.

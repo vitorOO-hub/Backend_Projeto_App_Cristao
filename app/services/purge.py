@@ -1,8 +1,8 @@
 """Physical removal of deleted videos; idempotent, so it can be repeated after any failure."""
 from flask import current_app
 
-from app.access import ext
-from app.auth import now
+from app.api.access import ext
+from app.api.auth import now
 
 
 def purge_video(video):

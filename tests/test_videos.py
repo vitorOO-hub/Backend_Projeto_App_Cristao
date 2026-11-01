@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 import pytest
 from bson import ObjectId
 
-from app.errors import ApiError
-from app.videos import (EMPTY_REVIEW, can_view, new_video, to_millis, validate_file_info,
+from app.core.errors import ApiError
+from app.domain.videos import (EMPTY_REVIEW, can_view, new_video, to_millis, validate_file_info,
                         validate_metadata, video_public, video_restricted)
 
 AT = datetime(2026, 10, 27, 10, 0, 0, 123456, tzinfo=timezone.utc)

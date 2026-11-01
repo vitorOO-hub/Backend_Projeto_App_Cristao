@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.errors import ApiError
-from app.media import probe_video, summarize
-from app.storage import FileTooLarge, LocalStorage
+from app.core.errors import ApiError
+from app.services.media import probe_video, summarize
+from app.services.storage import FileTooLarge, LocalStorage
 
 GOOD = {'format': {'format_name': 'mov,mp4,m4a,3gp,3g2,mj2', 'duration': '42.5'},
         'streams': [{'codec_type': 'video', 'codec_name': 'h264', 'width': 1080, 'height': 1920},

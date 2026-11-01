@@ -8,11 +8,11 @@ import pytest
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
-from app.errors import ApiError, DataUnavailable, ReportConflict
-from app.interactions import MongoInteractions
-from app.social import new_comment, new_report
+from app.core.errors import ApiError, DataUnavailable, ReportConflict
+from app.services.interactions import MongoInteractions
+from app.domain.social import new_comment, new_report
 
-social_api = import_module('app.social_api')
+social_api = import_module('app.api.social')
 
 
 @pytest.mark.parametrize('method,suffix,body', [

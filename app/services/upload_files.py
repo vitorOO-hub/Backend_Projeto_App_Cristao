@@ -9,7 +9,7 @@ from pathlib import Path
 
 from bson import ObjectId
 
-from app.errors import StorageUnavailable
+from app.core.errors import StorageUnavailable
 
 LEASE_ID = re.compile(r'[0-9a-f]{32}')
 

@@ -6,10 +6,10 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 from pymongo.errors import PyMongoError
 
-from app.constants import CATEGORIES, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, VIDEO_STATUSES
-from app.block_filter import unblocked_stages
-from app.errors import DataUnavailable
-from app.videos import EMPTY_REVIEW, METADATA_FIELDS, to_millis
+from app.core.constants import CATEGORIES, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, VIDEO_STATUSES
+from app.repositories.block_filter import unblocked_stages
+from app.core.errors import DataUnavailable
+from app.domain.videos import EMPTY_REVIEW, METADATA_FIELDS, to_millis
 
 NEWEST_FIRST = [('created_at', -1), ('_id', -1)]
 OLDEST_FIRST = [('created_at', 1), ('_id', 1)]

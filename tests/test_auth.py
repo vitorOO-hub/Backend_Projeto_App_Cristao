@@ -5,7 +5,7 @@ import pytest
 from werkzeug.security import check_password_hash
 
 from app import create_app
-from app.auth import digest
+from app.api.auth import digest
 
 
 def credentials(client):

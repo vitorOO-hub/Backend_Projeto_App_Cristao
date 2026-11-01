@@ -1,8 +1,8 @@
 """Read-only, bounded diagnosis of interactions without an active parent video."""
 from pymongo.errors import PyMongoError
 
-from app.errors import DataUnavailable
-from app.video_repository import object_id, purge_limit
+from app.core.errors import DataUnavailable
+from app.repositories.videos import object_id, purge_limit
 
 
 class UnavailableOrphanRepository:

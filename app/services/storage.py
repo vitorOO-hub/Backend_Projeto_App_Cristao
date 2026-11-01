@@ -3,7 +3,7 @@ import os
 import uuid
 from pathlib import Path
 
-from app.videos import STORAGE_KEY
+from app.domain.videos import STORAGE_KEY
 
 CHUNK_BYTES = 1024 * 1024
 

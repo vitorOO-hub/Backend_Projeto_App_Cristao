@@ -4,8 +4,8 @@ import pytest
 import requests
 
 from app import create_app
-from app.cache import SQLiteCache
-from app.errors import CacheUnavailable
+from app.repositories.bible_cache import SQLiteCache
+from app.core.errors import CacheUnavailable
 
 
 PATH = "/api/bible/passages"

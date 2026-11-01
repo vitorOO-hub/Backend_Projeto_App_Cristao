@@ -8,11 +8,11 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 from pymongo.errors import OperationFailure
 
-from app.auth import digest
-from app.auth_repository import MongoAuthRepository
-from app.errors import AuthUnavailable
+from app.api.auth import digest
+from app.repositories.auth import MongoAuthRepository
+from app.core.errors import AuthUnavailable
 
-auth_module = import_module('app.auth')
+auth_module = import_module('app.api.auth')
 
 
 @pytest.mark.parametrize('command', ['create-admin', 'set-role'])

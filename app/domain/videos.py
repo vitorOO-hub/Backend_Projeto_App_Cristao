@@ -3,9 +3,9 @@ import re
 
 from bson import ObjectId
 
-from app.auth import check_strings, iso, user_public
-from app.constants import BIBLE_REFERENCE_MAX, CAPTION_MAX, CATEGORIES, MAX_VIDEO_SECONDS
-from app.errors import ApiError
+from app.api.auth import check_strings, iso, user_public
+from app.core.constants import BIBLE_REFERENCE_MAX, CAPTION_MAX, CATEGORIES, MAX_VIDEO_SECONDS
+from app.core.errors import ApiError
 
 METADATA_FIELDS = {'caption', 'category', 'bible_reference'}
 FILE_FIELDS = {'storage_key', 'bytes', 'duration_seconds', 'video_codec', 'audio_codec', 'width', 'height'}

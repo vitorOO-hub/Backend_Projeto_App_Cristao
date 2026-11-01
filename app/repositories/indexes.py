@@ -2,7 +2,7 @@
 from pymongo import IndexModel
 from pymongo.errors import PyMongoError
 
-from app.errors import DataUnavailable
+from app.core.errors import DataUnavailable
 
 # users, sessions, rate_limits, bible_cache and login_attempts keep their own initialize().
 INDEXES = {

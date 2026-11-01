@@ -3,8 +3,8 @@ import json
 import pytest
 from bson import ObjectId
 
-from app.errors import ApiError
-from app.purge import purge_pending
+from app.core.errors import ApiError
+from app.services.purge import purge_pending
 from world import MP4_BYTES
 
 INTERNALS = ('storage_key', 'video_codec', 'purged_at', 'deleted_at', 'author_id', 'decided_by', 'password')

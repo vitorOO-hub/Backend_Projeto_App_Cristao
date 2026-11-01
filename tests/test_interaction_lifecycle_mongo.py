@@ -11,17 +11,17 @@ from bson import ObjectId
 from flask import Flask
 from pymongo import MongoClient
 
-from app.db import ensure_indexes
-from app.errors import ApiError, DataUnavailable, ReportConflict
-from app.interactions import MongoInteractions
-from app.orphans import MongoOrphanRepository
-from app.purge import purge_video
-from app.social import new_comment, new_report
-from app.social_repository import MongoCommentRepository, MongoReactionRepository
-from app.storage import LocalStorage
-from app.transactions import MongoTransactions
-from app.video_repository import MongoVideoRepository
-from app.videos import new_video
+from app.repositories.indexes import ensure_indexes
+from app.core.errors import ApiError, DataUnavailable, ReportConflict
+from app.services.interactions import MongoInteractions
+from app.repositories.orphans import MongoOrphanRepository
+from app.services.purge import purge_video
+from app.domain.social import new_comment, new_report
+from app.repositories.social import MongoCommentRepository, MongoReactionRepository
+from app.services.storage import LocalStorage
+from app.repositories.transactions import MongoTransactions
+from app.repositories.videos import MongoVideoRepository
+from app.domain.videos import new_video
 
 AT = datetime(2026, 10, 31, tzinfo=timezone.utc)
 

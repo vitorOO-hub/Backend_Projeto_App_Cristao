@@ -8,12 +8,12 @@ import pytest
 from bson import ObjectId
 from pymongo import MongoClient
 
-from app.db import ensure_indexes
-from app.interactions import MongoInteractions
-from app.social import new_comment
-from app.social_repository import (MongoBlockRepository, MongoCommentRepository, MongoFollowRepository,
+from app.repositories.indexes import ensure_indexes
+from app.services.interactions import MongoInteractions
+from app.domain.social import new_comment
+from app.repositories.social import (MongoBlockRepository, MongoCommentRepository, MongoFollowRepository,
                                    MongoReactionRepository, MongoReportRepository)
-from app.video_repository import MongoVideoRepository
+from app.repositories.videos import MongoVideoRepository
 from world import World
 
 

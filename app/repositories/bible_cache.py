@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pymongo.errors import PyMongoError
 
-from app.errors import CacheUnavailable
+from app.core.errors import CacheUnavailable
 
 
 class SQLiteCache:

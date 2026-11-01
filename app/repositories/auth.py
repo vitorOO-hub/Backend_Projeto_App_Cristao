@@ -5,7 +5,7 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
-from app.errors import AuthUnavailable, EmailConflict, UsernameConflict
+from app.core.errors import AuthUnavailable, EmailConflict, UsernameConflict
 
 
 def scalar_selector(value):

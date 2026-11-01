@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 import requests
 
-from app.errors import ApiError, CacheUnavailable
+from app.core.errors import ApiError, CacheUnavailable
 
 
 ALIASES = {

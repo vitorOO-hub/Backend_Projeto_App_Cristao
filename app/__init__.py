@@ -9,31 +9,31 @@ from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 from werkzeug.exceptions import HTTPException
 
-from app.bible import BibleService
-from app.cache import MongoCache, SQLiteCache
-from app.db import ensure_indexes
-from app.errors import ApiError, CacheUnavailable, AuthUnavailable, DataUnavailable, StorageUnavailable
-from app.auth import auth, configure_auth
-from app.media import probe_video
-from app.interactions import MongoInteractions, UnavailableInteractions
-from app.moderation_api import moderation
-from app.purge import purge_pending, recheck_deleted
-from app.orphans import MongoOrphanRepository, UnavailableOrphanRepository
-from app.access import parse_id
-from app.profile_api import profile
-from app.social_api import social
-from app.storage import LocalStorage
-from app.upload_request import UploadRequest
-from app.uploads import MongoUploadRepository, UnavailableUploadRepository, UploadManager
-from app.video_api import videos
-from app.auth_repository import MongoAuthRepository, UnavailableAuthRepository
-from app.social_repository import (MongoBlockRepository, MongoCommentRepository,
+from app.services.bible import BibleService
+from app.repositories.bible_cache import MongoCache, SQLiteCache
+from app.repositories.indexes import ensure_indexes
+from app.core.errors import ApiError, CacheUnavailable, AuthUnavailable, DataUnavailable, StorageUnavailable
+from app.api.auth import auth, configure_auth
+from app.services.media import probe_video
+from app.services.interactions import MongoInteractions, UnavailableInteractions
+from app.api.moderation import moderation
+from app.services.purge import purge_pending, recheck_deleted
+from app.repositories.orphans import MongoOrphanRepository, UnavailableOrphanRepository
+from app.api.access import parse_id
+from app.api.profile import profile
+from app.api.social import social
+from app.services.storage import LocalStorage
+from app.api.upload_request import UploadRequest
+from app.services.uploads import MongoUploadRepository, UnavailableUploadRepository, UploadManager
+from app.api.videos import videos
+from app.repositories.auth import MongoAuthRepository, UnavailableAuthRepository
+from app.repositories.social import (MongoBlockRepository, MongoCommentRepository,
                                    MongoFollowRepository, MongoReactionRepository, MongoReportRepository,
                                    UnavailableBlockRepository, UnavailableCommentRepository,
                                    UnavailableFollowRepository, UnavailableReactionRepository,
                                    UnavailableReportRepository)
-from app.video_repository import MongoVideoRepository, UnavailableVideoRepository
-from app.security import (MongoRateLimits, SQLiteRateLimits, configure_security,
+from app.repositories.videos import MongoVideoRepository, UnavailableVideoRepository
+from app.core.security import (MongoRateLimits, SQLiteRateLimits, configure_security,
                           protect_requests, validate_mongo_transport)
 
 

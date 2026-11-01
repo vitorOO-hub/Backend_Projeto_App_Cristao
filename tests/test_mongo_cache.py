@@ -4,8 +4,8 @@ from unittest.mock import Mock
 import pytest
 from pymongo.errors import ConnectionFailure
 
-from app.cache import MongoCache
-from app.errors import CacheUnavailable
+from app.repositories.bible_cache import MongoCache
+from app.core.errors import CacheUnavailable
 
 
 def test_mongo_checks_expiry_and_writes_ttl():

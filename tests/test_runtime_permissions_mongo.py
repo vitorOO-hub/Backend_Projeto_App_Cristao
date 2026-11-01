@@ -11,9 +11,9 @@ from pymongo.errors import OperationFailure
 from bson import ObjectId
 
 from app import create_app
-from app.auth_repository import MongoAuthRepository
-from app.cache import MongoCache
-from app.db import ensure_indexes
+from app.repositories.auth import MongoAuthRepository
+from app.repositories.bible_cache import MongoCache
+from app.repositories.indexes import ensure_indexes
 
 
 RUNTIME_ACTIONS = {

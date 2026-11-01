@@ -13,6 +13,20 @@ Preservar Flask, React web, MongoDB Atlas e AWS EC2 conforme RA01–RA05. Backen
 
 Estrutura backend criada na T03: `app/`, `tests/`, dependências, `wsgi.py` e configuração Gunicorn. Frontend possui `src/`, configuração Vite e scripts de testes, lint e build.
 
+### Organização do pacote `app/`
+
+O pacote é agrupado por responsabilidade, e os imports são sempre qualificados (`from app.repositories.videos import ...`). `create_app` (em `app/__init__.py`) monta tudo. Os módulos ainda não seguem uma regra estrita de dependência entre camadas: por exemplo, `domain/social` e `services/uploads` usam helpers de `api/auth`.
+
+| Pacote | Responsabilidade | Módulos |
+|---|---|---|
+| `app/api/` | Camada HTTP: blueprints, sessão e CSRF, autorização, paginação | `auth`, `videos`, `social`, `profile`, `moderation`, `access`, `pagination`, `upload_request` |
+| `app/services/` | Regras de aplicação e integrações externas | `bible`, `interactions`, `media`, `purge`, `storage`, `upload_files`, `uploads` |
+| `app/domain/` | Montagem e validação das entidades | `videos`, `social` |
+| `app/repositories/` | Persistência: MongoDB, cache, índices e transações | `auth`, `videos`, `social`, `bible_cache`, `block_filter`, `indexes`, `orphans`, `transactions` |
+| `app/core/` | Base compartilhada | `constants`, `errors`, `security` |
+
+Os testes ficam planos em `tests/` porque compartilham os ajudantes `conftest`, `fakes` e `world`.
+
 ## Autenticação atual e planejamento D004
 
 **Runtime atual:** JWT HS256 em cookie HttpOnly `app_session`, registro obrigatório/revogável em MongoDB e `SESSION_TTL_SECONDS=43200` (12 horas absolutas), sem renovação. Sessão anônima de CSRF dura 1800 segundos. Logout remove o registro e expira o cookie; a assinatura sozinha não autoriza uma sessão removida.

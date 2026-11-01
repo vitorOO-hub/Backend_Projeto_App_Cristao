@@ -97,7 +97,7 @@ As severidades abaixo são avaliação contextual, não pontuação CVSS calcula
 
 ### SEC-01 Alta Criação pública sem orçamento de recursos
 
-**Evidência:** `app/auth.py:157`, `app/auth.py:177` e modelo Nginx sem limites de taxa. Vinte clientes sintéticos sem cookie criaram vinte sessões, todos com HTTP 200. Três cadastros consecutivos criaram três usuários, todos com 201. A sessão CSRF não é obstáculo contra automação que consegue obtê-la normalmente.
+**Evidência:** `app/api/auth.py:157`, `app/api/auth.py:177` e modelo Nginx sem limites de taxa. Vinte clientes sintéticos sem cookie criaram vinte sessões, todos com HTTP 200. Três cadastros consecutivos criaram três usuários, todos com 201. A sessão CSRF não é obstáculo contra automação que consegue obtê-la normalmente.
 
 **Impacto:** consumo de armazenamento e operações do banco, crescimento de usuários sem TTL e trabalho de hashing de senha. O potencial de esgotamento de recursos é alto; não foi provocado esgotamento real. TTL de sessões reduz retenção posterior, mas não impede o custo e o pico de criação.
 
@@ -107,7 +107,7 @@ As severidades abaixo são avaliação contextual, não pontuação CVSS calcula
 
 ### SEC-02 Média Limite de login não é atômico
 
-**Evidência:** `app/auth.py:203–212` primeiro consulta falhas e depois registra a tentativa; `auth_repository.py:105–116` não reserva a tentativa atomicamente. Na reprodução sincronizada, 12 requisições viram o mesmo estado inicial e todas retornaram 401, com 12 falhas registradas e nenhum 429, embora o limite declarado seja 10.
+**Evidência:** `app/api/auth.py:203–212` primeiro consulta falhas e depois registra a tentativa; `auth_repository.py:105–116` não reserva a tentativa atomicamente. Na reprodução sincronizada, 12 requisições viram o mesmo estado inicial e todas retornaram 401, com 12 falhas registradas e nenhum 429, embora o limite declarado seja 10.
 
 **Impacto:** ultrapassagem do orçamento de tentativas e maior consumo de hashing durante concorrência. A prova usou threads e snapshots de repositório fake, com verificação de senha simulada; demonstra a corrida da aplicação. Não comprova doze verificações simultâneas no deploy atual, cujo modelo tem dois workers síncronos.
 
@@ -117,7 +117,7 @@ As severidades abaixo são avaliação contextual, não pontuação CVSS calcula
 
 ### SEC-03 Média Proxy concentra o limite por e-mail e permite bloqueio compartilhado
 
-**Evidência:** `app/auth.py:202` usa `request.remote_addr`; Nginx configura X-Forwarded-For em `deploy/nginx.conf.example:21`, mas o Flask não aplica tratamento de proxy confiável. Onze IPs encaminhados diferentes, com o mesmo REMOTE_ADDR de proxy, produziram uma única chave. Depois de dez falhas, login com a senha correta retornou 429.
+**Evidência:** `app/api/auth.py:202` usa `request.remote_addr`; Nginx configura X-Forwarded-For em `deploy/nginx.conf.example:21`, mas o Flask não aplica tratamento de proxy confiável. Onze IPs encaminhados diferentes, com o mesmo REMOTE_ADDR de proxy, produziram uma única chave. Depois de dez falhas, login com a senha correta retornou 429.
 
 **Impacto:** um cliente pode prejudicar temporariamente outro usuário atrás do mesmo proxy para um e-mail conhecido. Além disso, mudar o e-mail-alvo evita um orçamento apenas por IP/e-mail; o mecanismo atual não protege a capacidade total do serviço.
 

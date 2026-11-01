@@ -1,11 +1,11 @@
 """The signed-in user's own profile: counters, reacted videos, followers and following (RF08)."""
 from flask import Blueprint, Response, jsonify
 
-from app.access import ext, not_found, parse_id, serialize_videos
-from app.auth import authenticated_user, csrf_user, now, read_session, user_public, user_self
-from app.auth import repository as accounts
-from app.errors import ApiError
-from app.pagination import page_params, page_response, query_args
+from app.api.access import ext, not_found, parse_id, serialize_videos
+from app.api.auth import authenticated_user, csrf_user, now, read_session, user_public, user_self
+from app.api.auth import repository as accounts
+from app.core.errors import ApiError
+from app.api.pagination import page_params, page_response, query_args
 
 profile = Blueprint('profile', __name__, url_prefix='/api')
 

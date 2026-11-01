@@ -3,8 +3,8 @@ import json
 import math
 import subprocess
 
-from app.constants import MAX_VIDEO_SECONDS
-from app.errors import ApiError
+from app.core.constants import MAX_VIDEO_SECONDS
+from app.core.errors import ApiError
 
 MAX_OUTPUT_BYTES = 256 * 1024
 

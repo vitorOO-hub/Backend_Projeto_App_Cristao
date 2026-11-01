@@ -1,12 +1,12 @@
 """Reactions, comments, reports and blocks (RF06, RF07, RF09, RF10)."""
 from flask import Blueprint, Response, jsonify, request
 
-from app.access import approved_video, ext, not_found, parse_id, viewer_id
-from app.auth import authenticated_user, csrf_user, json_payload, now, optional_user, read_session
-from app.auth import repository as accounts
-from app.errors import ApiError, ReportConflict
-from app.pagination import page_params, page_response, query_args
-from app.social import (block_public, check_block, comment_public, new_comment, new_report)
+from app.api.access import approved_video, ext, not_found, parse_id, viewer_id
+from app.api.auth import authenticated_user, csrf_user, json_payload, now, optional_user, read_session
+from app.api.auth import repository as accounts
+from app.core.errors import ApiError, ReportConflict
+from app.api.pagination import page_params, page_response, query_args
+from app.domain.social import (block_public, check_block, comment_public, new_comment, new_report)
 
 social = Blueprint('social', __name__, url_prefix='/api')
 

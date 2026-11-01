@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 import pytest
 from bson import ObjectId
 
-from app.errors import ApiError
-from app.pagination import decode_cursor, encode_cursor
+from app.core.errors import ApiError
+from app.api.pagination import decode_cursor, encode_cursor
 
 AT = datetime(2026, 10, 27, 10, 0, 0, 123000, tzinfo=timezone.utc)
 ITEM = {'_id': ObjectId(), 'created_at': AT}

@@ -4,9 +4,9 @@ import re
 from bson import ObjectId
 from flask import current_app
 
-from app.auth import repository as accounts
-from app.errors import ApiError
-from app.videos import can_view, video_public, video_restricted
+from app.api.auth import repository as accounts
+from app.core.errors import ApiError
+from app.domain.videos import can_view, video_public, video_restricted
 
 ID_PATTERN = re.compile(r'[0-9a-f]{24}')
 

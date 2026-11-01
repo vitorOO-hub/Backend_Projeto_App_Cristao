@@ -4,8 +4,8 @@ import pytest
 from pymongo.errors import OperationFailure
 
 from app import create_app
-from app.db import INDEXES, ensure_indexes
-from app.errors import DataUnavailable
+from app.repositories.indexes import INDEXES, ensure_indexes
+from app.core.errors import DataUnavailable
 
 
 def spec(collection):

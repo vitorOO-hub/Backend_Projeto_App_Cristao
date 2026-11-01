@@ -10,8 +10,8 @@ from bson import ObjectId
 import pytest
 from werkzeug.security import generate_password_hash
 
-from app.auth import digest, issue_token
-from app.cache import SQLiteCache
+from app.api.auth import digest, issue_token
+from app.repositories.bible_cache import SQLiteCache
 
 
 @pytest.fixture(scope='module')

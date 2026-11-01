@@ -6,7 +6,7 @@ import pytest
 import requests
 
 from app import create_app
-from app.errors import AuthUnavailable, EmailConflict, UsernameConflict
+from app.core.errors import AuthUnavailable, EmailConflict, UsernameConflict
 
 
 @pytest.fixture(autouse=True)

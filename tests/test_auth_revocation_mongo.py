@@ -9,7 +9,7 @@ import pytest
 from bson import ObjectId
 from pymongo import MongoClient
 
-from app.auth_repository import MongoAuthRepository
+from app.repositories.auth import MongoAuthRepository
 
 
 @pytest.fixture

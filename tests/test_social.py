@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 import pytest
 from bson import ObjectId
 
-from app.errors import ApiError
-from app.social import (block_public, check_block, comment_public, new_comment, new_report,
+from app.core.errors import ApiError
+from app.domain.social import (block_public, check_block, comment_public, new_comment, new_report,
                         report_public, validate_resolution)
 
 AT = datetime(2026, 10, 27, 10, 0, 0, 123456, tzinfo=timezone.utc)

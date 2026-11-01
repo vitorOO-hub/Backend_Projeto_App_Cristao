@@ -178,7 +178,7 @@ GET `/health`, público: 200 com `data.status=ok` e sem segredos quando o proces
 
 ## Estado implementado das rotas de vídeo, interações e moderação
 
-Todas as rotas das seções 2 a 5 estão implementadas (`app/video_api.py`, `app/social_api.py`, `app/moderation_api.py`) e possuem testes automatizados. Um registro anterior descreveu fluxo com substituto de `ffprobe`; o registro posterior de 29/10 relata Atlas de desenvolvimento e `ffprobe` real. Nenhuma dessas provas foi repetida nesta revisão. Publicação, feed, mídia, Amém, denúncias/moderação e passagem já têm consumo no frontend base `5d79b9d`; gestão, comentários e bloqueios compõem a branch local citada no início. Presença de clientes HTTP não conclui o aceite integrado.
+Todas as rotas das seções 2 a 5 estão implementadas (`app/api/videos.py`, `app/api/social.py`, `app/api/moderation.py`) e possuem testes automatizados. Um registro anterior descreveu fluxo com substituto de `ffprobe`; o registro posterior de 29/10 relata Atlas de desenvolvimento e `ffprobe` real. Nenhuma dessas provas foi repetida nesta revisão. Publicação, feed, mídia, Amém, denúncias/moderação e passagem já têm consumo no frontend base `5d79b9d`; gestão, comentários e bloqueios compõem a branch local citada no início. Presença de clientes HTTP não conclui o aceite integrado.
 
 **Convenções adotadas na implementação**
 

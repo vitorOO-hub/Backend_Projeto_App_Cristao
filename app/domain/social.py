@@ -1,10 +1,10 @@
 """Comments, reports and blocks: validation, construction and public JSON."""
 from bson import ObjectId
 
-from app.auth import check_strings, iso, user_public
-from app.constants import COMMENT_MAX, REPORT_REASON_RANGE
-from app.errors import ApiError
-from app.videos import invalid, to_millis
+from app.api.auth import check_strings, iso, user_public
+from app.core.constants import COMMENT_MAX, REPORT_REASON_RANGE
+from app.core.errors import ApiError
+from app.domain.videos import invalid, to_millis
 
 
 def clean_text(payload, field, low, high):

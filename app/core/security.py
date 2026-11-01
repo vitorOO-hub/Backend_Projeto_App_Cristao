@@ -14,7 +14,7 @@ from pymongo.errors import DuplicateKeyError, PyMongoError
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.exceptions import RequestEntityTooLarge
 
-from app.errors import ApiError, AuthUnavailable
+from app.core.errors import ApiError, AuthUnavailable
 
 
 class TrustedProxy:

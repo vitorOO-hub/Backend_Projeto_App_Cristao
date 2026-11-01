@@ -1,14 +1,14 @@
 """Feed, publication, own videos and media delivery (RF02-RF05)."""
 from flask import Blueprint, Response, current_app, jsonify, request, send_file
 
-from app.access import (ext, load_video, not_found, parse_id, serialize_videos, viewer_id)
-from app.auth import authenticated_user, csrf_user, json_payload, now, optional_user, read_session
-from app.constants import CATEGORIES, VIDEO_STATUSES
-from app.errors import ApiError
-from app.pagination import bad_request, page_params, page_response, query_args
-from app.purge import purge_video
-from app.storage import FileTooLarge
-from app.videos import new_video, validate_metadata
+from app.api.access import (ext, load_video, not_found, parse_id, serialize_videos, viewer_id)
+from app.api.auth import authenticated_user, csrf_user, json_payload, now, optional_user, read_session
+from app.core.constants import CATEGORIES, VIDEO_STATUSES
+from app.core.errors import ApiError
+from app.api.pagination import bad_request, page_params, page_response, query_args
+from app.services.purge import purge_video
+from app.services.storage import FileTooLarge
+from app.domain.videos import new_video, validate_metadata
 
 videos = Blueprint('videos', __name__, url_prefix='/api')
 

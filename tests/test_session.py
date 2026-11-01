@@ -4,7 +4,7 @@ import jwt
 import pytest
 from bson import ObjectId
 
-from app.auth import digest, issue_token
+from app.api.auth import digest, issue_token
 
 EMAIL = 'maria@example.com'
 PASSWORD = 'password12345'

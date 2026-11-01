@@ -5,7 +5,7 @@
 ## Princípios
 
 - IDs `ObjectId` no banco e hexadecimais de 24 caracteres na API. Os repositórios aceitam somente `ObjectId` como identificador: string ou objeto vindo do cliente é erro de programação (`ValueError`), nunca um filtro.
-- Datas BSON UTC. O MongoDB guarda milissegundos, e o Python tem microssegundos: toda data gravada passa por `to_millis` (`app/videos.py`). Sem isso, o `expected_updated_at` devolvido pelo cliente nunca bateria com o valor do banco e a moderação retornaria 409 sempre.
+- Datas BSON UTC. O MongoDB guarda milissegundos, e o Python tem microssegundos: toda data gravada passa por `to_millis` (`app/domain/videos.py`). Sem isso, o `expected_updated_at` devolvido pelo cliente nunca bateria com o valor do banco e a moderação retornaria 409 sempre.
 - O arquivo MP4 fica no armazenamento do servidor; o MongoDB guarda só a **chave relativa** (`<uuid hex>.mp4`). A raiz vem de `UPLOAD_DIR`, o que torna o dado portável entre o computador local e a EC2 e permite trocar o armazenamento depois sem alterar o banco. Caminho absoluto nunca é gravado nem exposto.
 - Autor, estado, datas e dados técnicos são definidos pelo servidor. O cliente só envia `caption`, `category` e `bible_reference` (mais o arquivo).
 - Contadores (`reaction_count`, `comment_count`) são calculados, não armazenados: o `comment_count` precisa respeitar os autores que o consultante bloqueou, então um contador no vídeo estaria errado. Para uma página do feed, usar uma agregação (`$group` sobre os IDs da página), e não uma consulta por vídeo.
@@ -89,7 +89,7 @@ As reservas de upload são criadas e conferidas sob guardas transacionais compar
 
 ## Índices
 
-Declarados em `app/db.py` e criados por `flask --app app init-db`. As coleções antigas continuam usando `init-auth` e `init-cache`.
+Declarados em `app/repositories/indexes.py` e criados por `flask --app app init-db`. As coleções antigas continuam usando `init-auth` e `init-cache`.
 
 | Índice | Chave | Atende |
 | --- | --- | --- |
@@ -118,7 +118,7 @@ Não há índice TTL em dados permanentes. Os filtros dos índices parciais usam
 
 ## Repositório de vídeos
 
-`app/video_repository.py` segue o padrão de `auth_repository.py`: `Protocol`, implementação Mongo e uma versão indisponível que nunca usa armazenamento alternativo. Falha do banco vira `DataUnavailable` (503 `data_unavailable`) sem detalhes internos.
+`app/repositories/videos.py` segue o padrão de `auth_repository.py`: `Protocol`, implementação Mongo e uma versão indisponível que nunca usa armazenamento alternativo. Falha do banco vira `DataUnavailable` (503 `data_unavailable`) sem detalhes internos.
 
 | Método | Uso futuro |
 | --- | --- |
@@ -133,9 +133,9 @@ Não há índice TTL em dados permanentes. Os filtros dos índices parciais usam
 
 Cursor: tupla `(created_at, _id)` do último item entregue; a codificação opaca fica na rota. Limite de 1 a 30.
 
-## Repositórios de interações (`app/social_repository.py`)
+## Repositórios de interações (`app/repositories/social.py`)
 
-Mesmo padrão do repositório de vídeos: identificadores só como `ObjectId`, falha do banco vira `DataUnavailable` e, sem `MONGODB_URI`, versões "indisponíveis" que nunca usam armazenamento alternativo. Validação e JSON público ficam em `app/social.py`.
+Mesmo padrão do repositório de vídeos: identificadores só como `ObjectId`, falha do banco vira `DataUnavailable` e, sem `MONGODB_URI`, versões "indisponíveis" que nunca usam armazenamento alternativo. Validação e JSON público ficam em `app/domain/social.py`.
 
 As rotas usam `MongoInteractions` para gravar reações, comentários e novas denúncias sob a transação de disponibilidade do vídeo. Os métodos genéricos dos repositórios não substituem esse serviço nas mutações de negócio.
 

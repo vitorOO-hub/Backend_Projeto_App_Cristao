@@ -6,10 +6,10 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 from pymongo.errors import OperationFailure, ServerSelectionTimeoutError
 
-from app.errors import DataUnavailable
-from app.video_repository import (NEWEST_FIRST, OLDEST_FIRST, MongoVideoRepository,
+from app.core.errors import DataUnavailable
+from app.repositories.videos import (NEWEST_FIRST, OLDEST_FIRST, MongoVideoRepository,
                                   UnavailableVideoRepository, approved_query, cursor_clause)
-from app.videos import EMPTY_REVIEW
+from app.domain.videos import EMPTY_REVIEW
 
 AT = datetime(2026, 10, 27, 10, 0, 0, 123456, tzinfo=timezone.utc)
 MILLIS = AT.replace(microsecond=123000)

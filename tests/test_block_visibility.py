@@ -5,9 +5,9 @@ from unittest.mock import MagicMock
 import pytest
 from bson import ObjectId
 
-from app.social import new_comment
-from app.social_repository import MongoCommentRepository, MongoFollowRepository, MongoReactionRepository
-from app.video_repository import MongoVideoRepository
+from app.domain.social import new_comment
+from app.repositories.social import MongoCommentRepository, MongoFollowRepository, MongoReactionRepository
+from app.repositories.videos import MongoVideoRepository
 
 
 def ids(response):

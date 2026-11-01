@@ -11,11 +11,11 @@ import pytest
 from bson import ObjectId
 from flask import Flask
 
-from app.errors import ApiError, DataUnavailable, StorageUnavailable
-from app.storage import LocalStorage
-from app.upload_files import LeaseBusy, UploadLease
-from app.uploads import ACTIVE, MongoUploadRepository, UploadManager, UploadPolicy
-from app.videos import new_video
+from app.core.errors import ApiError, DataUnavailable, StorageUnavailable
+from app.services.storage import LocalStorage
+from app.services.upload_files import LeaseBusy, UploadLease
+from app.services.uploads import ACTIVE, MongoUploadRepository, UploadManager, UploadPolicy
+from app.domain.videos import new_video
 from test_interaction_lifecycle_mongo import AT, lifecycle_database
 
 Disk = namedtuple('Disk', 'total used free')

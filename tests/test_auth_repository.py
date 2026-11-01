@@ -5,8 +5,8 @@ import pytest
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError, OperationFailure, ServerSelectionTimeoutError
 
-from app.auth_repository import MongoAuthRepository
-from app.errors import AuthUnavailable, EmailConflict, UsernameConflict
+from app.repositories.auth import MongoAuthRepository
+from app.core.errors import AuthUnavailable, EmailConflict, UsernameConflict
 
 
 @pytest.fixture

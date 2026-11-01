@@ -3,14 +3,14 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify
 
-from app.access import ext, not_found, parse_id, serialize_videos
-from app.auth import (authenticated_user, csrf_user, json_payload, now, read_session,
+from app.api.access import ext, not_found, parse_id, serialize_videos
+from app.api.auth import (authenticated_user, csrf_user, json_payload, now, read_session,
                       require_admin)
-from app.constants import REPORT_STATUSES, REVIEW_REASON_RANGE, VIDEO_STATUSES
-from app.errors import ApiError
-from app.pagination import bad_request, page_params, page_response, query_args
-from app.social import clean_text, report_public, validate_resolution
-from app.videos import to_millis
+from app.core.constants import REPORT_STATUSES, REVIEW_REASON_RANGE, VIDEO_STATUSES
+from app.core.errors import ApiError
+from app.api.pagination import bad_request, page_params, page_response, query_args
+from app.domain.social import clean_text, report_public, validate_resolution
+from app.domain.videos import to_millis
 
 moderation = Blueprint('moderation', __name__, url_prefix='/api')
 

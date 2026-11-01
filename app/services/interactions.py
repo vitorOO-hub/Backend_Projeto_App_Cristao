@@ -1,10 +1,10 @@
 """Interaction writes serialized with the video's moderation, edit and deletion writes."""
 from pymongo.errors import DuplicateKeyError, PyMongoError
 
-from app.errors import ApiError, DataUnavailable, ReportConflict
-from app.transactions import MongoTransactions
-from app.video_repository import object_id
-from app.videos import to_millis
+from app.core.errors import ApiError, DataUnavailable, ReportConflict
+from app.repositories.transactions import MongoTransactions
+from app.repositories.videos import object_id
+from app.domain.videos import to_millis
 
 
 def unavailable_video():

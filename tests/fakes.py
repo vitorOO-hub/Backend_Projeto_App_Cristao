@@ -5,11 +5,11 @@ from threading import RLock
 
 from bson import ObjectId
 
-from app.errors import DataUnavailable, ReportConflict, StorageUnavailable
-from app.videos import EMPTY_REVIEW, to_millis
-from app.interactions import unavailable_video
-from app.uploads import ACTIVE, MongoUploadRepository, check_admission
-from app.auth import now
+from app.core.errors import DataUnavailable, ReportConflict, StorageUnavailable
+from app.domain.videos import EMPTY_REVIEW, to_millis
+from app.services.interactions import unavailable_video
+from app.services.uploads import ACTIVE, MongoUploadRepository, check_admission
+from app.api.auth import now
 
 DECISION_FROM = {'approved': ('pending', 'rejected'), 'rejected': ('pending', 'approved')}
 

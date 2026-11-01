@@ -6,11 +6,11 @@ import pytest
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError, ServerSelectionTimeoutError
 
-from app.db import INDEXES
-from app.errors import DataUnavailable
-from app.social_repository import (MongoFollowRepository, MongoReactionRepository,
+from app.repositories.indexes import INDEXES
+from app.core.errors import DataUnavailable
+from app.repositories.social import (MongoFollowRepository, MongoReactionRepository,
                                    UnavailableFollowRepository, UnavailableReactionRepository)
-from app.video_repository import NEWEST_FIRST, MongoVideoRepository, UnavailableVideoRepository
+from app.repositories.videos import NEWEST_FIRST, MongoVideoRepository, UnavailableVideoRepository
 
 AT = datetime(2026, 10, 27, 10, 0, 0, 123456, tzinfo=timezone.utc)
 MILLIS = AT.replace(microsecond=123000)

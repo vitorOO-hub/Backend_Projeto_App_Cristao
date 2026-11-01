@@ -7,8 +7,8 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from flask import jsonify, request
 
-from app.constants import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
-from app.errors import ApiError
+from app.core.constants import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from app.core.errors import ApiError
 
 
 def bad_request(message='Parâmetros inválidos.'):
