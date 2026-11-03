@@ -39,3 +39,5 @@ Sem URI MongoDB, o desenvolvimento usa cache SQLite em `instance/`, ignorado pel
 
 - [Documento de Escopo e Requisitos do Projeto](docs/escopo-e-requisitos.md): visão do produto, análise de lacunas, arquitetura proposta, funcionalidades, prioridades, cronograma e critérios de aceite.
 - [Requisitos oficiais do Projeto 3](https://insper.github.io/ProgramacaoEficaz/projetos/projeto3/).
+
+https://consonant-amnesty-election.ngrok-free.dev/login
